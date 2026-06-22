@@ -14,9 +14,9 @@ The goal of this project is to investigate alternative interaction and explorati
 
 The proposed reader considers three broad groups of users:
 
-* **Beginner Reader** – users who need guidance, explanations, and a clear entry point into a specification.
-* **Specification Analyst** – users who are familiar with semantic specifications and need to explore structure, relationships, profiles, and reusable concepts.
-* **Developer / Implementer** – users who need technical details such as IRIs, constraints, schemas, validation artifacts, and implementation-oriented representations.
+* **Beginner** – users who need guidance, explanations, and a clear entry point into a specification.
+* **Spec Analyst** – users who are familiar with semantic specifications and need to explore structure, relationships, profiles, and reusable concepts.
+* **Developer** – users who need technical details such as IRIs, constraints, schemas, validation artifacts, and implementation-oriented representations.
 
 ## Proposed Views
 
