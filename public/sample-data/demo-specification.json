@@ -1,88 +1,56 @@
 {
-  "metadata": {
-    "id": "demo-course-profile",
-    "title": "Course Application Profile",
-    "description": "A small representative specification used to validate the first reader workflow.",
-    "iri": "https://example.org/specifications/course-profile",
-    "version": "0.1.0",
-    "publisher": "Dataspecer example",
-    "license": "CC BY 4.0"
-  },
-  "artifacts": [
-    {
-      "id": "html-doc",
-      "title": "Generated HTML documentation",
-      "type": "html",
-      "url": "https://example.org/specifications/course-profile/"
-    },
-    {
-      "id": "svg-diagram",
-      "title": "Class diagram",
-      "type": "svg",
-      "url": "https://example.org/specifications/course-profile/diagram.svg"
-    },
-    {
-      "id": "shacl-shapes",
-      "title": "SHACL validation shapes",
-      "type": "shacl",
-      "url": "https://example.org/specifications/course-profile/shapes.ttl"
-    }
+  "@id": "https://example.org/specifications/course-profile/",
+  "@type": [
+    "dsv:ApplicationProfileSpecificationDocument",
+    "adms:AssetDistribution",
+    "prof:ResourceDescriptor"
   ],
-  "relatedSpecifications": [
+  "hasArtifact": "",
+  "hasRole": "role:specification",
+  "format": "filetype:HTML",
+  "inSpecificationOf": [
     {
-      "id": "dcterms",
-      "title": "Dublin Core Terms",
-      "relation": "reuses vocabulary",
-      "url": "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/"
-    },
-    {
-      "id": "schema-org",
-      "title": "Schema.org",
-      "relation": "aligns selected terms",
-      "url": "https://schema.org/"
-    }
-  ],
-  "classes": [
-    {
-      "id": "course",
-      "label": "Course",
-      "iri": "https://example.org/classes/Course",
-      "description": "An educational course described by the application profile.",
-      "properties": [
+      "@id": "https://example.org/specifications/course-profile#",
+      "@type": ["dsv:ApplicationProfile", "prof:Profile"],
+      "title": {
+        "en": "Course Application Profile"
+      },
+      "description": {
+        "en": "A small representative specification used to validate the first reader workflow."
+      },
+      "isProfileOf": [
         {
-          "id": "course-title",
-          "label": "title",
-          "iri": "http://purl.org/dc/terms/title",
-          "range": "string",
-          "cardinality": "1..1",
-          "requirementLevel": "mandatory",
-          "description": "Human-readable course title."
+          "title": {
+            "en": "Dublin Core Terms"
+          },
+          "hasResource": {
+            "hasArtifact": "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/"
+          }
         },
         {
-          "id": "course-description",
-          "label": "description",
-          "iri": "http://purl.org/dc/terms/description",
-          "range": "string",
-          "cardinality": "0..1",
-          "requirementLevel": "recommended",
-          "description": "Short description of the course."
+          "title": {
+            "en": "Schema.org"
+          },
+          "hasResource": {
+            "hasArtifact": "https://schema.org/"
+          }
         }
-      ]
-    },
-    {
-      "id": "teacher",
-      "label": "Teacher",
-      "iri": "https://example.org/classes/Teacher",
-      "description": "A person responsible for teaching a course.",
-      "properties": [
+      ],
+      "hasResource": [
         {
-          "id": "teacher-name",
-          "label": "name",
-          "iri": "https://schema.org/name",
-          "range": "string",
-          "cardinality": "1..1",
-          "requirementLevel": "mandatory",
-          "description": "Teacher name."
+          "hasArtifact": "./dsv.ttl",
+          "hasRole": "role:constraints",
+          "format": "filetype:RDF_TURTLE"
+        },
+        {
+          "hasArtifact": "./shacl.ttl",
+          "hasRole": "role:constraints",
+          "format": "filetype:RDF_TURTLE"
+        },
+        {
+          "hasArtifact": "./diagram.svg",
+          "hasRole": "role:guidance",
+          "format": "filetype:SVG"
         }
       ]
     }

@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from "vue-router";
 import { routes } from "./routes";
-import { useSpecificationState } from "../state/specificationState";
-
-const state = useSpecificationState();
 </script>
 
 <template>
@@ -27,13 +24,7 @@ const state = useSpecificationState();
       </nav>
     </header>
 
-    <main class="app-main">
-      <section v-if="state.selectedSpecification" class="context-strip">
-        <span>Active specification</span>
-        <strong>{{ state.selectedSpecification.title }}</strong>
-        <span>{{ state.detailMode }} mode</span>
-      </section>
-
+    <main class="app-main" :class="`app-main--${String($route.name)}`">
       <RouterView />
     </main>
   </div>
