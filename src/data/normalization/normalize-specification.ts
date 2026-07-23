@@ -183,9 +183,9 @@ function normalizeRelatedSpecifications(
     }
 
     const resource = firstObject(item.hasResource);
-    const targetIri =
-      readFirstString(item, ["@id", "id", "url"]) ??
-      readFirstString(resource, ["hasArtifact", "url", "@id"]);
+    const canonicalTargetIri = readFirstString(item, ["@id", "id", "url"]);
+    const targetUrl = readFirstString(resource, ["hasArtifact", "url", "@id"]);
+    const targetIri = canonicalTargetIri ?? targetUrl;
     const title =
       readFirstLocalizedString(item, ["title", "name", "label"]) ??
       (targetIri ? localizedString(targetIri) : undefined);
@@ -199,6 +199,8 @@ function normalizeRelatedSpecifications(
       title,
       relation: "isProfileOf",
       targetIri,
+      targetUrl,
+      kind: canonicalTargetIri && targetUrl ? "published-specification" : "external-resource",
       label: readFirstLocalizedString(item, ["label"]),
     });
   }

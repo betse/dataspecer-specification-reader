@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/routes";
+import type { SpecificationArtifact } from "../../data/model/artifact";
 import { selectLocalizedString } from "../../data/model/localized-string";
 import { useSpecificationState } from "../../state/specificationState";
+import SpecificationBrowser from "./SpecificationBrowser.vue";
+
+type S2STab = "overview" | "browser";
 
 const state = useSpecificationState();
 const specification = computed(() => state.specification);
+const activeTab = ref<S2STab>("overview");
 
 const title = computed(
   () => selectLocalizedString(specification.value?.metadata.title) ?? "Untitled specification",
@@ -36,7 +41,8 @@ const metadataRows = computed(() => {
     { label: "Version", value: metadata.version },
     { label: "Publisher", value: selectLocalizedString(metadata.publisher) },
     { label: "License", value: metadata.license },
-    { label: "Conforms to", value: metadata.types.join(", "), mono: true },
+    // { label: "Conforms to", value: metadata.types.join(", "), mono: true },
+    { label: "Resource Type", value: metadata.types.map(typeLabel).join(", "), mono: true },
     { label: "Source", value: sourceUrl.value, href: sourceUrl.value },
   ].filter((row) => row.value);
 });
@@ -44,18 +50,75 @@ const metadataRows = computed(() => {
 function typeLabel(type: string): string {
   return type.replace(/^[^:]+:/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
 }
+
+function artifactFormatLabel(artifact: SpecificationArtifact): string {
+  const value = `${artifact.mediaType ?? ""} ${artifact.url}`.toLowerCase();
+
+  if (artifact.type === "rdf" && (value.includes("turtle") || value.endsWith(".ttl"))) {
+    return "TTL";
+  }
+
+  if (artifact.type === "json-schema") {
+    return "JSON";
+  }
+
+  if (artifact.type === "xml-schema") {
+    return "XSD";
+  }
+
+  return artifact.type.toUpperCase();
+}
+
+function artifactFormatClass(artifact: SpecificationArtifact): string {
+  const label = artifactFormatLabel(artifact).toLowerCase();
+
+  if (label === "ttl") {
+    return "ttl";
+  }
+
+  if (label === "json") {
+    return "json";
+  }
+
+  if (label === "xsd") {
+    return "xsd";
+  }
+
+  return artifact.type;
+}
 </script>
 
 <template>
   <section class="s2s-shell">
     <div class="tab-bar">
-      <button class="tab-btn active" type="button">
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'overview' }"
+        type="button"
+        @click="activeTab = 'overview'"
+      >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="18" height="18" rx="2" />
           <line x1="3" y1="9" x2="21" y2="9" />
           <line x1="9" y1="21" x2="9" y2="9" />
         </svg>
         Specification Overview
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'browser' }"
+        type="button"
+        :disabled="!specification"
+        @click="activeTab = 'browser'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="5" r="3" />
+          <circle cx="5" cy="19" r="3" />
+          <circle cx="19" cy="19" r="3" />
+          <line x1="12" y1="8" x2="5" y2="16" />
+          <line x1="12" y1="8" x2="19" y2="16" />
+        </svg>
+        Specification Browser
       </button>
       <div class="tab-spacer"></div>
       <div v-if="specification" class="focus-indicator">
@@ -67,7 +130,7 @@ function typeLabel(type: string): string {
       </div>
     </div>
 
-    <div class="tab-panel active">
+    <div v-show="activeTab === 'overview'" class="tab-panel active">
       <div class="overview-panel">
         <div v-if="specification" class="ov-wrap">
           <div class="spec-header">
@@ -116,6 +179,42 @@ function typeLabel(type: string): string {
 
           <div class="ov-section">
             <div class="ov-heading">
+              <div class="ov-heading-text">Artifacts</div>
+              <div class="ov-heading-line"></div>
+            </div>
+            <div v-if="specification.artifacts.length" class="artifact-list">
+              <a
+                v-for="artifact in specification.artifacts"
+                :key="artifact.id"
+                class="artifact-row"
+                :href="artifact.url"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <div class="artifact-fmt" :class="artifactFormatClass(artifact)">
+                  {{ artifactFormatLabel(artifact) }}
+                </div>
+                <div class="artifact-main">
+                  <div class="artifact-name">
+                    {{ selectLocalizedString(artifact.title) }}
+                  </div>
+                  <div class="artifact-type">{{ artifact.mediaType ?? artifact.type }}</div>
+                </div>
+                <span class="artifact-role">{{ artifact.type }}</span>
+                <span class="artifact-open" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15,3 21,3 21,9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                </span>
+              </a>
+            </div>
+            <p v-else class="empty-copy">No generated artifacts were found in the JSON-LD.</p>
+          </div>
+
+          <div class="ov-section">
+            <div class="ov-heading">
               <div class="ov-heading-text">Related Specifications</div>
               <div class="ov-heading-line"></div>
             </div>
@@ -153,6 +252,16 @@ function typeLabel(type: string): string {
               </svg>
               Open in Explorer
             </RouterLink>
+            <button class="ov-action-btn secondary" type="button" @click="activeTab = 'browser'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="5" r="3" />
+                <circle cx="5" cy="19" r="3" />
+                <circle cx="19" cy="19" r="3" />
+                <line x1="12" y1="8" x2="5" y2="16" />
+                <line x1="12" y1="8" x2="19" y2="16" />
+              </svg>
+              Browse Relationships
+            </button>
           </div>
         </div>
 
@@ -167,6 +276,10 @@ function typeLabel(type: string): string {
           </RouterLink>
         </div>
       </div>
+    </div>
+
+    <div v-if="specification && activeTab === 'browser'" class="tab-panel active">
+      <SpecificationBrowser :specification="specification" />
     </div>
   </section>
 </template>
@@ -203,11 +316,16 @@ function typeLabel(type: string): string {
   padding: 12px 18px 11px;
   background: none;
   color: var(--text2);
-  cursor: default;
+  cursor: pointer;
   font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   font-weight: 400;
   transition: all 0.15s;
+}
+
+.tab-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .tab-btn:hover {
@@ -402,7 +520,7 @@ function typeLabel(type: string): string {
 
 .meta-table td {
   padding: 10px 0;
-  font-size: 15px;
+  font-size: 13px;
   vertical-align: top;
 }
 
@@ -431,6 +549,133 @@ function typeLabel(type: string): string {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   font-size: 13px;
   word-break: break-word;
+}
+
+.artifact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.artifact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+}
+
+.artifact-row:hover {
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  transform: translateX(2px);
+}
+
+.artifact-fmt {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.artifact-fmt.ttl,
+.artifact-fmt.rdf {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.artifact-fmt.shacl {
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+
+.artifact-fmt.html {
+  background: var(--teal-bg);
+  color: var(--teal);
+}
+
+.artifact-fmt.svg {
+  background: var(--purple-bg);
+  color: var(--purple);
+}
+
+.artifact-fmt.json,
+.artifact-fmt.json-schema {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.artifact-fmt.xsd,
+.artifact-fmt.xml-schema {
+  background: var(--surface3);
+  color: var(--text2);
+}
+
+.artifact-main {
+  min-width: 0;
+}
+
+.artifact-name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.artifact-type {
+  color: var(--text3);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.artifact-role {
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.artifact-open {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text3);
+  transition: all 0.12s;
+}
+
+.artifact-row:hover .artifact-open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.artifact-open svg {
+  width: 13px;
+  height: 13px;
 }
 
 .related-chips {
@@ -571,6 +816,14 @@ function typeLabel(type: string): string {
 
   .meta-table td:first-child {
     width: 110px;
+  }
+
+  .artifact-row {
+    align-items: flex-start;
+  }
+
+  .artifact-role {
+    display: none;
   }
 }
 </style>

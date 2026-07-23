@@ -1,7 +1,7 @@
 /**
  * Text value keyed by language tag.
  *
- * Dataspecer JSON-LD often publishes language maps such as
+ * Dataspecer JSON-LD can publish language maps such as
  * `{ "en": "Title", "cs": "Název" }`. This type preserves all available
  * language variants instead of choosing one during normalization.
  */

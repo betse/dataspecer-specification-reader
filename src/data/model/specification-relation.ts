@@ -1,5 +1,7 @@
 import type { LocalizedString } from "./localized-string";
 
+export type RelatedSpecificationKind = "published-specification" | "external-resource";
+
 /**
  * A directed relationship from the loaded specification to another
  * specification, profile, or vocabulary.
@@ -28,6 +30,15 @@ export interface RelatedSpecification {
 
   /** IRI or URL of the referenced specification/profile/vocabulary. */
   targetIri: string;
+
+  /**
+   * Navigable resource advertised for the target, when it differs from the
+   * target's canonical IRI. This is commonly a published HTML page or RDF file.
+   */
+  targetUrl?: string;
+
+  /** Whether the relation resolves to a published specification or a referenced resource. */
+  kind: RelatedSpecificationKind;
 
   /** Optional shorter label when the JSON-LD provides one separately from title. */
   label?: LocalizedString;
