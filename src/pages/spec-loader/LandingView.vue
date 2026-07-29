@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import { routes } from "../../app/routes";
-import { loadSpecification } from "../../data/loading/load-specification";
-import type { SpecificationSource } from "../../data/loading/specification-source";
-import { useSpecificationState, type DetailMode } from "../../state/specificationState";
+import { routes } from "../../app/router";
+import { loadSpecificationFromUrl } from "../../data/loading/load-specification-from-url";
+import { useSpecificationState, type DetailMode } from "../../state/specification-state";
 
 const router = useRouter();
 const state = useSpecificationState();
@@ -12,14 +11,17 @@ const sourceUrl = ref("");
 const detailMode = ref<DetailMode>(state.detailMode);
 
 async function openSpecification() {
+  const url = sourceUrl.value.trim();
+  if (!url) {
+    state.setError("Enter a specification URL.");
+    return;
+  }
+
   state.setLoading(true);
   state.setError(null);
 
   try {
-    const source: SpecificationSource = sourceUrl.value.trim()
-      ? { type: "url", url: sourceUrl.value.trim() }
-      : { type: "static", key: "demo-specification" };
-    const specification = await loadSpecification(source);
+    const specification = await loadSpecificationFromUrl(url);
     state.setSpecification(specification);
     state.setDetailMode(detailMode.value);
     await router.push(routes.specToSpec);
@@ -62,6 +64,7 @@ async function openSpecification() {
           placeholder="https://mff-uk.github.io/data-specification-vocabulary/dsv-dap/"
           autocomplete="off"
           spellcheck="false"
+          required
         />
         <button class="open-btn" type="submit" :disabled="state.isLoading">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">

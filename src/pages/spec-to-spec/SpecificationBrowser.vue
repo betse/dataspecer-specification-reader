@@ -14,70 +14,57 @@ import {
 } from "d3";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
-import { routes } from "../../app/routes";
-import { selectLocalizedString } from "../../data/model/localized-string";
+import { routes } from "../../app/router";
 import type {
-  RelatedSpecification,
-  RelatedSpecificationKind,
-} from "../../data/model/specification-relation";
-import type { Specification } from "../../data/model/specification";
+  SpecificationBrowser,
+  SpecificationBrowserEdge,
+  SpecificationBrowserNode,
+  SpecificationBrowserNodeKind,
+} from "./model/specification-browser";
 
-type Scope = "all" | RelatedSpecificationKind;
-type BrowserNode = {
-  id: string;
-  label: string;
-  type: "focal" | RelatedSpecificationKind;
-  typeLabel: string;
-  iri: string;
-  description?: string;
-  relation?: RelatedSpecification;
-};
+type Scope = "all" | "published-specification" | "external-resource";
+type BrowserNode = SpecificationBrowserNode;
+type GraphSvgElement = globalThis.SVGSVGElement;
 type GraphNode = SimulationNodeDatum & { id: string; node: BrowserNode };
 type GraphLink = SimulationLinkDatum<GraphNode>;
 type PositionedNode = { node: BrowserNode; x: number; y: number };
 
-const props = defineProps<{ specification: Specification }>();
+const props = defineProps<{ browser: SpecificationBrowser }>();
 
 const query = ref("");
 const scope = ref<Scope>("all");
 const selectedId = ref<string | null>(null);
-const graphSvg = ref<SVGSVGElement | null>(null);
+const graphSvg = ref<GraphSvgElement | null>(null);
 const graphTransform = ref(zoomIdentity.toString());
 const positionedNodes = ref<PositionedNode[]>([]);
-let zoomBehavior: ZoomBehavior<SVGSVGElement, unknown> | null = null;
+let zoomBehavior: ZoomBehavior<GraphSvgElement, unknown> | null = null;
 
-const focusNode = computed<BrowserNode>(() => ({
-  id: "__current-specification__",
-  label: selectLocalizedString(props.specification.metadata.title) ?? "Untitled specification",
-  type: "focal",
-  typeLabel: currentSpecificationType(props.specification.metadata.types),
-  iri: props.specification.metadata.iri ?? props.specification.metadata.id,
-  description: selectLocalizedString(props.specification.metadata.description),
-}));
+const focusNode = computed<BrowserNode>(() => {
+  const focalNode = props.browser.nodes.find((node) => node.id === props.browser.focalNodeId);
+  if (!focalNode) {
+    throw new Error("Specification browser model is missing its focal node.");
+  }
+  return focalNode;
+});
 
 const relationNodes = computed<BrowserNode[]>(() =>
-  props.specification.relatedSpecifications.map((relation) => ({
-    id: relation.id,
-    label: selectLocalizedString(relation.title) ?? relation.targetIri,
-    type: relation.kind,
-    typeLabel: relation.kind === "published-specification" ? "Published Spec" : "External",
-    iri: relation.targetIri,
-    relation,
-  })),
+  props.browser.nodes.filter((node) => node.id !== props.browser.focalNodeId),
 );
 
-const publishedCount = computed(
-  () => relationNodes.value.filter((node) => node.type === "published-specification").length,
-);
-const externalCount = computed(
-  () => relationNodes.value.filter((node) => node.type === "external-resource").length,
-);
+const publishedCount = computed(() => props.browser.counts.published);
+const externalCount = computed(() => props.browser.counts.external);
 
 const visibleRelations = computed(() =>
-  relationNodes.value.filter((node) => scope.value === "all" || node.type === scope.value),
+  relationNodes.value.filter((node) => scope.value === "all" || node.kind === scope.value),
 );
 
 const visibleNodes = computed(() => [focusNode.value, ...visibleRelations.value]);
+const visibleEdges = computed(() => {
+  const visibleNodeIds = new Set(visibleNodes.value.map((node) => node.id));
+  return props.browser.edges.filter(
+    (edge) => visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId),
+  );
+});
 
 const listedNodes = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase();
@@ -87,7 +74,7 @@ const listedNodes = computed(() => {
   }
 
   return visibleNodes.value.filter((node) =>
-    [node.label, node.iri, node.typeLabel, node.relation?.relation]
+    [node.title, node.graphLabel, node.iri, node.kindLabel, edgeForNode(node.id)?.predicate]
       .filter(Boolean)
       .join(" ")
       .toLocaleLowerCase()
@@ -117,9 +104,9 @@ function layoutGraph(): void {
       };
     }),
   ];
-  const links: GraphLink[] = visibleRelations.value.map((node) => ({
-    source: focusNode.value.id,
-    target: node.id,
+  const links: GraphLink[] = visibleEdges.value.map((edge) => ({
+    source: edge.sourceId,
+    target: edge.targetId,
   }));
 
   const simulation = forceSimulation<GraphNode>(simulationNodes)
@@ -160,7 +147,7 @@ watch([visibleRelations, focusNode], layoutGraph, { immediate: true });
 
 onMounted(() => {
   if (!graphSvg.value) return;
-  zoomBehavior = createZoom<SVGSVGElement, unknown>()
+  zoomBehavior = createZoom<GraphSvgElement, unknown>()
     .scaleExtent([0.35, 2.5])
     .on("zoom", (event) => {
       graphTransform.value = event.transform.toString();
@@ -185,39 +172,20 @@ function closeDrawer(): void {
   selectedId.value = null;
 }
 
-function relationLabel(relation?: string): string {
-  if (!relation) return "Related";
-  const labels: Record<string, string> = {
-    isProfileOf: "profiles",
-    "prof:isProfileOf": "profiles",
-    conformsTo: "conformsTo",
-    "dcterms:conformsTo": "conformsTo",
-    imports: "imports",
-    "owl:imports": "imports",
-  };
-  return labels[relation] ?? relation.replace(/^[^:]+:/, "");
+function edgeForNode(nodeId: string): SpecificationBrowserEdge | undefined {
+  return props.browser.edges.find(
+    (edge) => edge.sourceId === focusNode.value.id && edge.targetId === nodeId,
+  );
 }
 
-function currentSpecificationType(types: string[]): string {
-  if (types.some((type) => type.includes("ApplicationProfile"))) return "App Profile";
-  if (types.some((type) => type.includes("Vocabulary") || type.includes("Ontology"))) {
-    return "Vocabulary";
-  }
-  return "Specification";
-}
-
-function shortLabel(value: string, length = 24): string {
-  return value.length > length ? `${value.slice(0, length - 1)}…` : value;
-}
-
-function nodeClass(type: BrowserNode["type"]): string {
-  if (type === "published-specification") return "published";
-  if (type === "external-resource") return "external";
+function nodeClass(kind: SpecificationBrowserNodeKind): string {
+  if (kind === "published-specification") return "published";
+  if (kind === "external-resource") return "external";
   return "focal";
 }
 
-function targetLink(relation: RelatedSpecification): string {
-  return relation.targetUrl ?? relation.targetIri;
+function targetLink(node: SpecificationBrowserNode): string {
+  return node.resourceUrl ?? node.iri;
 }
 
 function changeZoom(factor: number): void {
@@ -264,7 +232,7 @@ function resetGraph(closeSelection = true): void {
           >
             <span class="rf-dot all"></span>
             <span>All specifications</span>
-            <span class="rf-count">{{ relationNodes.length }}</span>
+            <span class="rf-count">{{ browser.counts.all }}</span>
             <span class="rf-check"><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg></span>
           </button>
           <button
@@ -297,13 +265,13 @@ function resetGraph(closeSelection = true): void {
           v-for="node in listedNodes"
           :key="node.id"
           class="spec-list-item"
-          :class="{ focal: node.type === 'focal', active: selectedId === node.id }"
+          :class="{ focal: node.kind === 'focal', active: selectedId === node.id }"
           type="button"
           @click="selectNode(node)"
         >
-          <span class="sli-dot" :class="nodeClass(node.type)"></span>
-          <span class="sli-name">{{ node.label }}<template v-if="node.type === 'focal'"> ★</template></span>
-          <span class="sli-type">{{ node.typeLabel }}</span>
+          <span class="sli-dot" :class="nodeClass(node.kind)"></span>
+          <span class="sli-name">{{ node.title }}<template v-if="node.kind === 'focal'"> ★</template></span>
+          <span class="sli-type">{{ node.kindLabel }}</span>
         </button>
         <p v-if="!listedNodes.length" class="list-empty">No specifications match this search.</p>
       </div>
@@ -312,7 +280,7 @@ function resetGraph(closeSelection = true): void {
     <div class="graph-area">
       <div class="graph-toolbar">
         <div class="graph-legend">
-          <span class="gl-item"><i class="gl-dot focal"></i>{{ focusNode.typeLabel }}</span>
+          <span class="gl-item"><i class="gl-dot focal"></i>{{ focusNode.kindLabel }}</span>
           <span class="gl-item"><i class="gl-dot published"></i>Published Spec</span>
           <span class="gl-item"><i class="gl-dot external"></i>External</span>
         </div>
@@ -332,7 +300,7 @@ function resetGraph(closeSelection = true): void {
           class="relation-graph"
           viewBox="0 0 1000 620"
           role="img"
-          :aria-label="`Direct specification relationships for ${focusNode.label}`"
+          :aria-label="`Direct specification relationships for ${focusNode.title}`"
         >
           <defs>
             <pattern id="prototype-dot-grid" width="28" height="28" patternUnits="userSpaceOnUse">
@@ -364,7 +332,7 @@ function resetGraph(closeSelection = true): void {
                 :y="(310 + position.y) / 2 - (position.x - 500) * 0.12 - 5"
                 text-anchor="middle"
               >
-                {{ relationLabel(position.node.relation?.relation) }}
+                {{ edgeForNode(position.node.id)?.label ?? "Related" }}
               </text>
             </g>
 
@@ -378,8 +346,8 @@ function resetGraph(closeSelection = true): void {
               @keydown.enter="selectNode(focusNode)"
             >
               <rect x="-70" y="-22" width="140" height="44" rx="10" />
-              <text y="-5" text-anchor="middle">{{ shortLabel(focusNode.label) }}</text>
-              <text class="node-type" y="10" text-anchor="middle">{{ focusNode.typeLabel }}</text>
+              <text y="-5" text-anchor="middle">{{ focusNode.graphLabel }}</text>
+              <text class="node-type" y="10" text-anchor="middle">{{ focusNode.kindLabel }}</text>
               <text class="focal-star" x="42" y="-11">★</text>
             </g>
 
@@ -387,7 +355,7 @@ function resetGraph(closeSelection = true): void {
               v-for="position in positionedNodes"
               :key="position.node.id"
               class="graph-node"
-              :class="[nodeClass(position.node.type), { active: selectedId === position.node.id }]"
+              :class="[nodeClass(position.node.kind), { active: selectedId === position.node.id }]"
               :transform="`translate(${position.x} ${position.y})`"
               role="button"
               tabindex="0"
@@ -395,9 +363,9 @@ function resetGraph(closeSelection = true): void {
               @keydown.enter="selectNode(position.node)"
             >
               <rect x="-70" y="-22" width="140" height="44" rx="10" />
-              <text y="-5" text-anchor="middle">{{ shortLabel(position.node.label) }}</text>
+              <text y="-5" text-anchor="middle">{{ position.node.graphLabel }}</text>
               <text class="node-type" y="10" text-anchor="middle">
-                {{ position.node.typeLabel }}
+                {{ position.node.kindLabel }}
               </text>
             </g>
           </g>
@@ -412,10 +380,10 @@ function resetGraph(closeSelection = true): void {
     <aside class="detail-drawer" :class="{ open: selectedNode }">
       <template v-if="selectedNode">
         <div class="drawer-head">
-          <span class="drawer-type-dot" :class="nodeClass(selectedNode.type)"></span>
+          <span class="drawer-type-dot" :class="nodeClass(selectedNode.kind)"></span>
           <div>
-            <div class="drawer-title">{{ selectedNode.label }}</div>
-            <div class="drawer-version">{{ selectedNode.typeLabel }}</div>
+            <div class="drawer-title">{{ selectedNode.title }}</div>
+            <div class="drawer-version">{{ selectedNode.kindLabel }}</div>
           </div>
           <button
             class="drawer-close"
@@ -428,9 +396,9 @@ function resetGraph(closeSelection = true): void {
         </div>
 
         <div class="drawer-body">
-          <div v-if="selectedNode.relation" class="drawer-section">
-            <div class="drawer-section-label">Relationship to {{ focusNode.label }}</div>
-            <span class="rel-badge">{{ relationLabel(selectedNode.relation.relation) }}</span>
+          <div v-if="edgeForNode(selectedNode.id)" class="drawer-section">
+            <div class="drawer-section-label">Relationship to {{ focusNode.title }}</div>
+            <span class="rel-badge">{{ edgeForNode(selectedNode.id)?.label }}</span>
           </div>
 
           <div class="drawer-section">
@@ -447,16 +415,16 @@ function resetGraph(closeSelection = true): void {
             <div class="drawer-section-label">Statistics</div>
             <div class="drawer-stat-row">
               <div class="drawer-stat">
-                <div class="drawer-stat-n">—</div>
+                <div class="drawer-stat-n">{{ selectedNode.statistics.classes ?? "—" }}</div>
                 <div class="drawer-stat-l">Classes</div>
               </div>
               <div class="drawer-stat">
-                <div class="drawer-stat-n">—</div>
+                <div class="drawer-stat-n">{{ selectedNode.statistics.properties ?? "—" }}</div>
                 <div class="drawer-stat-l">Props</div>
               </div>
               <div class="drawer-stat">
                 <div class="drawer-stat-n">
-                  {{ selectedNode.type === "focal" ? specification.artifacts.length : "—" }}
+                  {{ selectedNode.statistics.artifacts ?? "—" }}
                 </div>
                 <div class="drawer-stat-l">Artifacts</div>
               </div>
@@ -468,14 +436,11 @@ function resetGraph(closeSelection = true): void {
             <div class="drawer-iri">{{ selectedNode.iri }}</div>
           </div>
 
-          <div
-            v-if="selectedNode.type === 'focal' && specification.artifacts.length"
-            class="drawer-section"
-          >
+          <div v-if="selectedNode.artifacts.length" class="drawer-section">
             <div class="drawer-section-label">Artifacts</div>
             <div class="drawer-artifact-mini">
               <a
-                v-for="artifact in specification.artifacts"
+                v-for="artifact in selectedNode.artifacts"
                 :key="artifact.id"
                 class="dam-row"
                 :href="artifact.url"
@@ -483,7 +448,7 @@ function resetGraph(closeSelection = true): void {
                 rel="noreferrer"
               >
                 <span class="dam-fmt">{{ artifact.type.toUpperCase() }}</span>
-                <span class="dam-name">{{ selectLocalizedString(artifact.title) }}</span>
+                <span class="dam-name">{{ artifact.title }}</span>
                 <span class="dam-role">{{ artifact.type }}</span>
               </a>
             </div>
@@ -491,16 +456,16 @@ function resetGraph(closeSelection = true): void {
         </div>
 
         <div class="drawer-footer">
-          <template v-if="selectedNode.type === 'focal'">
+          <template v-if="selectedNode.kind === 'focal'">
             <RouterLink class="drawer-action primary" :to="routes.primer">Open Primer</RouterLink>
             <RouterLink class="drawer-action secondary" :to="routes.specExplorer">
               Open in Explorer
             </RouterLink>
           </template>
           <a
-            v-else-if="selectedNode.relation"
+            v-else
             class="drawer-action primary"
-            :href="targetLink(selectedNode.relation)"
+            :href="targetLink(selectedNode)"
             target="_blank"
             rel="noreferrer"
           >Open referenced resource ↗</a>

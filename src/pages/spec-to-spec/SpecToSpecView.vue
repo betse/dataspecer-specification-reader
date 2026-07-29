@@ -1,91 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { RouterLink } from "vue-router";
-import { routes } from "../../app/routes";
-import type { SpecificationArtifact } from "../../data/model/artifact";
-import { selectLocalizedString } from "../../data/model/localized-string";
-import { useSpecificationState } from "../../state/specificationState";
+import { routes } from "../../app/router";
+import { useSpecificationState } from "../../state/specification-state";
 import SpecificationBrowser from "./SpecificationBrowser.vue";
+import { createSpecificationBrowser } from "./model/specification-browser";
+import { createSpecificationOverview } from "./model/specification-overview";
 
 type S2STab = "overview" | "browser";
 
 const state = useSpecificationState();
 const specification = computed(() => state.specification);
 const activeTab = ref<S2STab>("overview");
-
-const title = computed(
-  () => selectLocalizedString(specification.value?.metadata.title) ?? "Untitled specification",
+const overview = computed(() =>
+  specification.value ? createSpecificationOverview(specification.value) : null,
 );
-
-const description = computed(
-  () =>
-    selectLocalizedString(specification.value?.metadata.description) ??
-    "No description was provided by the specification metadata.",
+const browser = computed(() =>
+  specification.value ? createSpecificationBrowser(specification.value) : null,
 );
-
-const focusLabel = computed(() => title.value.split(/\s+/).slice(0, 3).join(" "));
-
-const sourceUrl = computed(
-  () => specification.value?.metadata.sourceUrl ?? specification.value?.metadata.iri,
-);
-
-const metadataRows = computed(() => {
-  if (!specification.value) {
-    return [];
-  }
-
-  const metadata = specification.value.metadata;
-
-  return [
-    { label: "IRI", value: metadata.iri, mono: true },
-    { label: "Version", value: metadata.version },
-    { label: "Publisher", value: selectLocalizedString(metadata.publisher) },
-    { label: "License", value: metadata.license },
-    // { label: "Conforms to", value: metadata.types.join(", "), mono: true },
-    { label: "Resource Type", value: metadata.types.map(typeLabel).join(", "), mono: true },
-    { label: "Source", value: sourceUrl.value, href: sourceUrl.value },
-  ].filter((row) => row.value);
-});
-
-function typeLabel(type: string): string {
-  return type.replace(/^[^:]+:/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-function artifactFormatLabel(artifact: SpecificationArtifact): string {
-  const value = `${artifact.mediaType ?? ""} ${artifact.url}`.toLowerCase();
-
-  if (artifact.type === "rdf" && (value.includes("turtle") || value.endsWith(".ttl"))) {
-    return "TTL";
-  }
-
-  if (artifact.type === "json-schema") {
-    return "JSON";
-  }
-
-  if (artifact.type === "xml-schema") {
-    return "XSD";
-  }
-
-  return artifact.type.toUpperCase();
-}
-
-function artifactFormatClass(artifact: SpecificationArtifact): string {
-  const label = artifactFormatLabel(artifact).toLowerCase();
-
-  if (label === "ttl") {
-    return "ttl";
-  }
-
-  if (label === "json") {
-    return "json";
-  }
-
-  if (label === "xsd") {
-    return "xsd";
-  }
-
-  return artifact.type;
-}
+const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3).join(" ") ?? "");
 </script>
 
 <template>
@@ -108,7 +41,7 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
         class="tab-btn"
         :class="{ active: activeTab === 'browser' }"
         type="button"
-        :disabled="!specification"
+        :disabled="!browser"
         @click="activeTab = 'browser'"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -121,7 +54,7 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
         Specification Browser
       </button>
       <div class="tab-spacer"></div>
-      <div v-if="specification" class="focus-indicator">
+      <div v-if="overview" class="focus-indicator">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3" />
           <circle cx="12" cy="12" r="9" stroke-dasharray="4 2" />
@@ -132,20 +65,20 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
 
     <div v-show="activeTab === 'overview'" class="tab-panel active">
       <div class="overview-panel">
-        <div v-if="specification" class="ov-wrap">
+        <div v-if="overview" class="ov-wrap">
           <div class="spec-header">
             <div>
               <div class="spec-eyebrow">Specification Overview</div>
-              <h1 class="spec-title">{{ title }}</h1>
-              <p class="spec-desc">{{ description }}</p>
+              <h1 class="spec-title">{{ overview.title }}</h1>
+              <p class="spec-desc">{{ overview.description }}</p>
               <div class="spec-badges">
-                <span v-for="type in specification.metadata.types" :key="type" class="badge">
+                <span v-for="type in overview.typeLabels" :key="type" class="badge">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10" />
                     <path d="M8 12h8" />
                     <path d="M12 8v8" />
                   </svg>
-                  {{ typeLabel(type) }}
+                  {{ type }}
                 </span>
                 <span class="badge status-ok">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -155,16 +88,30 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
                 </span>
               </div>
             </div>
+            <div class="stats-grid">
+              <div class="stat-cell">
+                <div class="stat-n">{{ overview.statistics.classes ?? "—" }}</div>
+                <div class="stat-l">Classes</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-n">{{ overview.statistics.properties ?? "—" }}</div>
+                <div class="stat-l">Properties</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-n">{{ overview.statistics.artifacts }}</div>
+                <div class="stat-l">Artifacts</div>
+              </div>
+            </div>
           </div>
 
-          <div v-if="metadataRows.length" class="ov-section">
+          <div v-if="overview.metadata.length" class="ov-section">
             <div class="ov-heading">
               <div class="ov-heading-text">Metadata</div>
               <div class="ov-heading-line"></div>
             </div>
             <table class="meta-table">
               <tbody>
-                <tr v-for="row in metadataRows" :key="row.label">
+                <tr v-for="row in overview.metadata" :key="row.label">
                   <td>{{ row.label }}</td>
                   <td>
                     <a v-if="row.href" :href="row.href" target="_blank" rel="noreferrer">
@@ -182,21 +129,21 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
               <div class="ov-heading-text">Artifacts</div>
               <div class="ov-heading-line"></div>
             </div>
-            <div v-if="specification.artifacts.length" class="artifact-list">
+            <div v-if="overview.artifacts.length" class="artifact-list">
               <a
-                v-for="artifact in specification.artifacts"
+                v-for="artifact in overview.artifacts"
                 :key="artifact.id"
                 class="artifact-row"
                 :href="artifact.url"
                 target="_blank"
                 rel="noreferrer"
               >
-                <div class="artifact-fmt" :class="artifactFormatClass(artifact)">
-                  {{ artifactFormatLabel(artifact) }}
+                <div class="artifact-fmt" :class="artifact.formatClass">
+                  {{ artifact.formatLabel }}
                 </div>
                 <div class="artifact-main">
                   <div class="artifact-name">
-                    {{ selectLocalizedString(artifact.title) }}
+                    {{ artifact.title }}
                   </div>
                   <div class="artifact-type">{{ artifact.mediaType ?? artifact.type }}</div>
                 </div>
@@ -218,18 +165,18 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
               <div class="ov-heading-text">Related Specifications</div>
               <div class="ov-heading-line"></div>
             </div>
-            <div v-if="specification.relatedSpecifications.length" class="related-chips">
+            <div v-if="overview.relatedSpecifications.length" class="related-chips">
               <a
-                v-for="related in specification.relatedSpecifications"
+                v-for="related in overview.relatedSpecifications"
                 :key="related.id"
                 class="rel-chip"
-                :href="related.targetIri"
+                :href="related.targetUrl"
                 target="_blank"
                 rel="noreferrer"
               >
                 <span class="rel-chip-dot"></span>
-                <span class="rel-chip-name">{{ selectLocalizedString(related.title) }}</span>
-                <span class="rel-chip-rel">{{ related.relation }}</span>
+                <span class="rel-chip-name">{{ related.title }}</span>
+                <span class="rel-chip-rel">{{ related.relationLabel }}</span>
                 <span class="rel-chip-arrow">↗</span>
               </a>
             </div>
@@ -278,8 +225,8 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
       </div>
     </div>
 
-    <div v-if="specification && activeTab === 'browser'" class="tab-panel active">
-      <SpecificationBrowser :specification="specification" />
+    <div v-if="browser && activeTab === 'browser'" class="tab-panel active">
+      <SpecificationBrowser :browser="browser" />
     </div>
   </section>
 </template>
@@ -392,8 +339,8 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
 
 .spec-header {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 24px;
+  grid-template-columns: 1fr auto;
+  gap: 34px;
   align-items: start;
   margin-bottom: 32px;
   border-bottom: 1px solid var(--border);
@@ -468,6 +415,40 @@ function artifactFormatClass(artifact: SpecificationArtifact): string {
   border-color: var(--green-bg);
   background: var(--green-bg);
   color: var(--green);
+}
+
+.stats-grid {
+  display: grid;
+  min-width: 300px;
+  grid-template-columns: repeat(3, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--border);
+  box-shadow: var(--shadow);
+  gap: 1px;
+}
+
+.stat-cell {
+  padding: 16px 20px;
+  background: var(--surface);
+}
+
+.stat-n {
+  margin-bottom: 2px;
+  color: var(--text);
+  font-family: "Jost", sans-serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.stat-l {
+  color: var(--text3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .ov-section {

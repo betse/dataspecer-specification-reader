@@ -10,7 +10,7 @@ interface NormalizeSpecificationOptions {
 type JsonObject = Record<string, unknown>;
 
 /**
- * Converts Dataspecer JSON-LD into the reader's high-level specification model.
+ * Normalizes Dataspecer JSON-LD into the reader's high-level specification model.
  *
  * Published Dataspecer pages describe two related things in the same JSON-LD
  * block:
@@ -20,7 +20,7 @@ type JsonObject = Record<string, unknown>;
  * The normalized model keeps only the stable high-level information for now:
  * metadata, generated artifacts, and related specifications.
  */
-export function normalizeJsonLdSpecification(
+export function normalizeSpecification(
   jsonLd: unknown,
   options: NormalizeSpecificationOptions = {},
 ): Specification {
@@ -34,8 +34,6 @@ export function normalizeJsonLdSpecification(
     relatedSpecifications: normalizeRelatedSpecifications(describedSpecification),
   };
 }
-
-export { normalizeJsonLdSpecification as normalizeSpecification };
 
 /**
  * Finds the JSON-LD node representing the loaded specification document.
