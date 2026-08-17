@@ -5,6 +5,7 @@ import { routes } from "../../app/router";
 import { loadPrimerData } from "../../data/loading/load-primer-data";
 import type { SemanticSpecification } from "../../data/semantic/semantic-specification";
 import { useSpecificationState } from "../../state/specification-state";
+import InteractiveSvgDiagram, { type InteractiveSvgSelection } from "./InteractiveSvgDiagram.vue";
 import { createPrimer } from "./model/primer";
 
 const state = useSpecificationState();
@@ -12,6 +13,11 @@ const semanticSpecification = shallowRef<SemanticSpecification>();
 const isSemanticLoading = ref(false);
 const semanticError = ref<string>();
 const selectedClassIri = ref<string>();
+const selectedSvgNode = ref<InteractiveSvgSelection>();
+const diagramClassIris = ref<string[]>([]);
+
+const MAX_KEY_CLASSES = 8;
+const MAX_PROPERTIES_PER_CLASS = 5;
 
 const primer = computed(() =>
   state.specification ? createPrimer(state.specification, semanticSpecification.value) : null,
@@ -23,6 +29,114 @@ const selectedClass = computed(() => {
     primer.value.vocabularyClasses.find((item) => item.iri === selectedClassIri.value)
   );
 });
+const selectedDiagramKey = computed(() => selectedClassIri.value ?? selectedSvgNode.value?.key);
+const selectedProfiledClassIris = computed(() => {
+  const selected = selectedClass.value;
+  return selected && "profiledClassIris" in selected ? selected.profiledClassIris : [];
+});
+const selectedSpecializationIris = computed(() => {
+  const selected = selectedClass.value;
+  return selected && "specializationOfIris" in selected ? selected.specializationOfIris : [];
+});
+const diagramTerms = computed(() => [
+  ...(primer.value?.classProfiles.map((profile) => ({
+    iri: profile.iri,
+    label: profile.label,
+    aliases: [
+      ...profile.profiledClassIris,
+      ...profile.profileOfIris,
+      ...profile.specializationOfIris,
+    ],
+  })) ?? []),
+  ...(primer.value?.vocabularyClasses.map((concept) => ({
+    iri: concept.iri,
+    label: concept.label,
+    aliases: concept.parentIris,
+  })) ?? []),
+]);
+const keyClasses = computed(() => {
+  if (!primer.value) return [];
+  const allClasses = [...primer.value.classProfiles, ...primer.value.vocabularyClasses];
+  const classByIri = new Map(allClasses.map((item) => [item.iri, item]));
+  const fromDiagram = diagramClassIris.value.flatMap((iri) => {
+    const item = classByIri.get(iri);
+    return item ? [item] : [];
+  });
+  const diagramIris = new Set(fromDiagram.map((item) => item.iri));
+  return [...fromDiagram, ...allClasses.filter((item) => !diagramIris.has(item.iri))].slice(
+    0,
+    MAX_KEY_CLASSES,
+  );
+});
+const keyClassProfiles = computed(() =>
+  keyClasses.value.filter((item) => "propertyProfileIris" in item),
+);
+interface SelectedProperty {
+  iri: string;
+  label: string;
+  kindLabel: string;
+  requirementLabel?: string;
+  cardinalityLabel?: string;
+  rangeLabels: string[];
+}
+
+const allSelectedProperties = computed<SelectedProperty[]>(() => {
+  const selected = selectedClass.value;
+  if (!primer.value || !selected) return [];
+
+  if ("propertyProfileIris" in selected) {
+    return sortPropertyProfiles(
+      primer.value.propertyProfiles.filter(
+        (property) =>
+          property.domainIri === selected.iri ||
+          selected.propertyProfileIris.includes(property.iri),
+      ),
+    ).map((property) => ({
+      iri: property.iri,
+      label: property.label,
+      kindLabel: property.kindLabel,
+      requirementLabel: property.requirementLabel,
+      cardinalityLabel: property.cardinalityLabel,
+      rangeLabels: property.rangeIris.map(termLabel),
+    }));
+  }
+
+  return primer.value.vocabularyProperties
+    .filter((property) => property.domainIri === selected.iri)
+    .map((property) => ({
+      iri: property.iri,
+      label: property.label,
+      kindLabel: property.kindLabel,
+      rangeLabels: property.rangeIri ? [termLabel(property.rangeIri)] : [],
+    }));
+});
+const selectedProperties = computed(() =>
+  allSelectedProperties.value.slice(0, MAX_PROPERTIES_PER_CLASS),
+);
+const hiddenSelectedPropertyCount = computed(() =>
+  Math.max(0, allSelectedProperties.value.length - selectedProperties.value.length),
+);
+const keyPropertyProfiles = computed(() => {
+  if (!primer.value) return [];
+  const selected: typeof primer.value.propertyProfiles = [];
+  const seen = new Set<string>();
+
+  for (const classProfile of keyClassProfiles.value) {
+    const properties = sortPropertyProfiles(
+      primer.value.propertyProfiles.filter(
+        (property) =>
+          property.domainIri === classProfile.iri ||
+          classProfile.propertyProfileIris.includes(property.iri),
+      ),
+    ).slice(0, MAX_PROPERTIES_PER_CLASS);
+    for (const property of properties) {
+      if (seen.has(property.iri)) continue;
+      seen.add(property.iri);
+      selected.push(property);
+    }
+  }
+  return selected;
+});
 
 watch(
   () => state.specification,
@@ -30,6 +144,8 @@ watch(
     semanticSpecification.value = undefined;
     semanticError.value = undefined;
     selectedClassIri.value = undefined;
+    selectedSvgNode.value = undefined;
+    diagramClassIris.value = [];
     if (!specification) return;
 
     let cancelled = false;
@@ -54,6 +170,32 @@ watch(
 
 function selectClass(iri: string) {
   selectedClassIri.value = iri;
+  selectedSvgNode.value = undefined;
+}
+
+function selectDiagramNode(selection: InteractiveSvgSelection) {
+  selectedClassIri.value = selection.semanticIri;
+  selectedSvgNode.value = selection.semanticIri ? undefined : selection;
+}
+
+function setDiagramClassOrder(iris: string[]) {
+  diagramClassIris.value = iris;
+}
+
+function sortPropertyProfiles<T extends { requirementLabel?: string }>(properties: T[]): T[] {
+  const priority: Record<string, number> = {
+    Mandatory: 0,
+    Recommended: 1,
+    Optional: 2,
+  };
+  return properties
+    .map((property, index) => ({ property, index }))
+    .sort(
+      (left, right) =>
+        (priority[left.property.requirementLabel ?? ""] ?? 3) -
+          (priority[right.property.requirementLabel ?? ""] ?? 3) || left.index - right.index,
+    )
+    .map(({ property }) => property);
 }
 
 function termLabel(iri?: string): string {
@@ -165,35 +307,32 @@ function termLabel(iri?: string): string {
         <p class="section-description">Diagram resource published for the loaded specification.</p>
 
         <div class="diagram-layout">
-          <article class="diagram-card">
+          <InteractiveSvgDiagram
+            v-if="primer.diagram"
+            :title="primer.diagram.title"
+            :url="primer.diagram.url"
+            :terms="diagramTerms"
+            :selected-key="selectedDiagramKey"
+            @select="selectDiagramNode"
+            @discover="setDiagramClassOrder"
+          />
+          <article v-else class="diagram-card">
             <div class="diagram-bar">
-              <strong>{{ primer.diagram?.title ?? "Conceptual diagram" }}</strong>
-              <span v-if="primer.diagram" class="availability available">Available</span>
-              <span v-else class="availability">Unavailable</span>
+              <strong>Conceptual diagram</strong>
+              <span class="availability">Unavailable</span>
             </div>
-            <a
-              v-if="primer.diagram"
-              class="diagram-stage"
-              :href="primer.diagram.url"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <img :src="primer.diagram.url" :alt="primer.diagram.title" />
-            </a>
-            <div v-else class="unavailable-state compact">
+            <div class="unavailable-state compact">
               <strong>No SVG artifact was advertised.</strong>
               <p>This specification does not expose a diagram in its current metadata.</p>
-            </div>
-            <div v-if="primer.diagram" class="diagram-footer">
-              <span>Published SVG</span>
-              <a :href="primer.diagram.url" target="_blank" rel="noreferrer">Open original ↗</a>
             </div>
           </article>
 
           <aside class="detail-panel">
             <div class="detail-head">
               <span class="detail-dot"></span>
-              <strong>{{ selectedClass?.label ?? "No class selected" }}</strong>
+              <strong>{{
+                selectedClass?.label ?? selectedSvgNode?.label ?? "No class selected"
+              }}</strong>
             </div>
             <div v-if="selectedClass" class="detail-content">
               <p>{{ selectedClass.description ?? "No description is available." }}</p>
@@ -204,7 +343,71 @@ function termLabel(iri?: string): string {
                 </template>
                 <dt>IRI</dt>
                 <dd>
-                  <a :href="selectedClass.iri">{{ selectedClass.iri }}</a>
+                  <a :href="selectedClass.iri" target="_blank" rel="noreferrer">
+                    {{ selectedClass.iri }}
+                  </a>
+                </dd>
+                <template v-if="selectedProfiledClassIris.length">
+                  <dt>Profiles</dt>
+                  <dd v-for="iri in selectedProfiledClassIris" :key="iri">
+                    <a :href="iri" target="_blank" rel="noreferrer">{{ termLabel(iri) }}</a>
+                  </dd>
+                </template>
+                <template v-if="selectedSpecializationIris.length">
+                  <dt>Specializes</dt>
+                  <dd v-for="iri in selectedSpecializationIris" :key="iri">
+                    <a :href="iri" target="_blank" rel="noreferrer">{{ termLabel(iri) }}</a>
+                  </dd>
+                </template>
+                <dt>Properties</dt>
+                <dd>
+                  <div v-if="selectedProperties.length" class="detail-properties">
+                    <article
+                      v-for="property in selectedProperties"
+                      :key="property.iri"
+                      class="detail-property"
+                    >
+                      <div class="property-heading">
+                        <a :href="property.iri" target="_blank" rel="noreferrer">
+                          {{ property.label }}
+                        </a>
+                        <span
+                          v-if="property.requirementLabel"
+                          class="requirement-pill"
+                          :class="property.requirementLabel.toLowerCase()"
+                        >
+                          {{ property.requirementLabel }}
+                        </span>
+                        <span v-if="property.cardinalityLabel" class="cardinality-pill">
+                          {{ property.cardinalityLabel }}
+                        </span>
+                      </div>
+                      <span class="property-meta">
+                        {{ property.rangeLabels.join(", ") || property.kindLabel }}
+                      </span>
+                    </article>
+                    <p v-if="hiddenSelectedPropertyCount" class="additional-count">
+                      {{ hiddenSelectedPropertyCount }} additional
+                      {{ hiddenSelectedPropertyCount === 1 ? "property" : "properties" }} not shown
+                      in this primer selection.
+                    </p>
+                  </div>
+                  <span v-else class="detail-empty">No direct properties were found.</span>
+                </dd>
+              </dl>
+            </div>
+            <div v-else-if="selectedSvgNode" class="detail-content">
+              <p>
+                {{ selectedSvgNode.description ?? "No description is embedded in this SVG node." }}
+              </p>
+              <dl>
+                <template v-if="selectedSvgNode.iri">
+                  <dt>Diagram identifier</dt>
+                  <dd>{{ selectedSvgNode.iri }}</dd>
+                </template>
+                <dt>Properties</dt>
+                <dd class="detail-empty">
+                  No semantic property data was found for this external diagram node.
                 </dd>
               </dl>
             </div>
@@ -223,40 +426,30 @@ function termLabel(iri?: string): string {
         </div>
         <h2>Key profiles</h2>
         <p class="section-description">
-          Classes and profiles defined by the selected specification.
+          A primer selection of up to {{ MAX_KEY_CLASSES }} classes and profiles. Diagram classes
+          are preferred, followed by source order.
         </p>
         <div v-if="isSemanticLoading" class="unavailable-state">
           <strong>Loading classes and profiles…</strong>
           <p>The published RDF artifacts are being parsed.</p>
         </div>
-        <div
-          v-else-if="primer.classProfiles.length || primer.vocabularyClasses.length"
-          class="profile-grid"
-        >
+        <div v-else-if="keyClasses.length" class="profile-grid">
           <button
-            v-for="profile in primer.classProfiles"
-            :key="profile.iri"
+            v-for="item in keyClasses"
+            :key="item.iri"
             class="profile-card"
-            :class="{ selected: selectedClassIri === profile.iri }"
+            :class="{ selected: selectedClassIri === item.iri }"
             type="button"
-            @click="selectClass(profile.iri)"
+            @click="selectClass(item.iri)"
           >
-            <span class="profile-type">Class profile</span>
-            <strong>{{ profile.label }}</strong>
-            <p>{{ profile.description ?? "No description available." }}</p>
-            <span v-if="profile.roleLabel" class="format-pill">{{ profile.roleLabel }}</span>
-          </button>
-          <button
-            v-for="concept in primer.vocabularyClasses"
-            :key="concept.iri"
-            class="profile-card"
-            :class="{ selected: selectedClassIri === concept.iri }"
-            type="button"
-            @click="selectClass(concept.iri)"
-          >
-            <span class="profile-type">Vocabulary class</span>
-            <strong>{{ concept.label }}</strong>
-            <p>{{ concept.description ?? "No description available." }}</p>
+            <span class="profile-type">
+              {{ "propertyProfileIris" in item ? "Class profile" : "Vocabulary class" }}
+            </span>
+            <strong>{{ item.label }}</strong>
+            <p>{{ item.description ?? "No description available." }}</p>
+            <span v-if="'roleLabel' in item && item.roleLabel" class="format-pill">
+              {{ item.roleLabel }}
+            </span>
           </button>
         </div>
         <div v-else class="unavailable-state">
@@ -272,7 +465,8 @@ function termLabel(iri?: string): string {
         </div>
         <h2>Requirement matrix</h2>
         <p class="section-description">
-          Property requirements and cardinalities from the specification's DSV profile data.
+          Up to {{ MAX_PROPERTIES_PER_CLASS }} properties per selected class, prioritised by
+          requirement level.
         </p>
         <div class="matrix-wrap">
           <table>
@@ -284,8 +478,8 @@ function termLabel(iri?: string): string {
                 <th>Cardinality</th>
               </tr>
             </thead>
-            <tbody v-if="primer.propertyProfiles.length">
-              <tr v-for="property in primer.propertyProfiles" :key="property.iri">
+            <tbody v-if="keyPropertyProfiles.length">
+              <tr v-for="property in keyPropertyProfiles" :key="property.iri">
                 <td>{{ termLabel(property.domainIri) }}</td>
                 <td>
                   <strong>{{ property.label }}</strong>
@@ -624,7 +818,7 @@ h1 {
 
 .diagram-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   align-items: start;
   gap: 18px;
 }
@@ -689,7 +883,14 @@ h1 {
   background: var(--border2);
 }
 
+.detail-panel {
+  position: sticky;
+  top: 112px;
+}
+
 .detail-content {
+  overflow: auto;
+  max-height: 560px;
   padding: 18px;
 }
 
@@ -717,6 +918,81 @@ h1 {
   overflow-wrap: anywhere;
   margin: 3px 0 0;
   font-size: 12px;
+}
+
+.detail-properties {
+  margin-top: 8px;
+}
+
+.detail-property {
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: var(--surface2);
+}
+
+.property-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.property-heading > a {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.requirement-pill,
+.cardinality-pill {
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.requirement-pill.mandatory {
+  background: var(--amber-bg, var(--surface3));
+  color: var(--amber, var(--text2));
+}
+
+.requirement-pill.recommended {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.requirement-pill.optional {
+  background: var(--gray-bg, var(--surface3));
+  color: var(--gray, var(--text2));
+}
+
+.cardinality-pill {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text3);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.property-meta {
+  display: block;
+  margin-top: 3px;
+  color: var(--text3);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+}
+
+.detail-empty {
+  color: var(--text3);
+  font-style: italic;
+}
+
+.additional-count {
+  margin: 9px 2px 0;
+  color: var(--text3);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .profile-grid {
@@ -900,6 +1176,10 @@ tbody tr:last-child td {
 
   .stats-grid {
     max-width: 420px;
+  }
+
+  .detail-panel {
+    position: static;
   }
 }
 
