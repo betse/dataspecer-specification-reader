@@ -2,7 +2,7 @@
 import { computed, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/router";
-import { loadPrimerData } from "../../data/loading/load-primer-data";
+import { loadSemanticSpecification } from "../../data/loading/load-semantic-specification";
 import type { SemanticSpecification } from "../../data/semantic/semantic-specification";
 import { useSpecificationState } from "../../state/specification-state";
 import InteractiveSvgDiagram, { type InteractiveSvgSelection } from "./InteractiveSvgDiagram.vue";
@@ -155,7 +155,7 @@ watch(
     isSemanticLoading.value = true;
 
     try {
-      const result = await loadPrimerData(specification);
+      const result = await loadSemanticSpecification(specification);
       if (!cancelled) semanticSpecification.value = result;
     } catch (error) {
       if (!cancelled) {
