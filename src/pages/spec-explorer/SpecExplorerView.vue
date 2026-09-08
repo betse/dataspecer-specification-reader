@@ -306,12 +306,14 @@ function createTypeScriptInterface(value: ExplorerClass): string {
     const optional = property.requirement === "mandatory" ? "" : "?";
     const type = propertyTypeName(property);
     const many = property.cardinality?.endsWith("*") ? "[]" : "";
-    return [
-      `  /** ${property.definition || property.label} */`,
-      `  ${safeIdentifier(property.label)}${optional}: ${type}${many};`,
-    ];
+    const declaration = `  ${safeIdentifier(property.label)}${optional}: ${type}${many};`;
+    return state.detailMode === "detailed"
+      ? [`  /** ${property.definition || property.label} */`, declaration]
+      : [declaration];
   });
-  return `/** ${value.definition || value.label} */\nexport interface ${safeIdentifier(value.label)} {\n${rows.join("\n")}\n}`;
+  const description =
+    state.detailMode === "detailed" ? `/** ${value.definition || value.label} */\n` : "";
+  return `${description}export interface ${safeIdentifier(value.label)} {\n${rows.join("\n")}\n}`;
 }
 
 function createJsonSchema(value: ExplorerClass): string {
@@ -319,10 +321,12 @@ function createJsonSchema(value: ExplorerClass): string {
   const properties = Object.fromEntries(
     value.properties.map((property) => {
       const name = safeIdentifier(property.label);
-      const schema = {
+      const schema: Record<string, unknown> = {
         type: property.kind === "object" ? "object" : jsonType(property),
-        description: property.definition || property.label,
       };
+      if (state.detailMode === "detailed") {
+        schema.description = property.definition || property.label;
+      }
       if (property.requirement === "mandatory") required.push(name);
       return [
         name,
@@ -334,7 +338,9 @@ function createJsonSchema(value: ExplorerClass): string {
     {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       title: value.label,
-      description: value.definition,
+      ...(state.detailMode === "detailed" && value.definition
+        ? { description: value.definition }
+        : {}),
       type: "object",
       properties,
       required,
@@ -347,9 +353,13 @@ function createJsonSchema(value: ExplorerClass): string {
 function createTurtleExample(value: ExplorerClass): string {
   const statements = value.properties.map((property) => {
     const target = property.kind === "object" ? `<${property.rangeIris[0] ?? ""}>` : '"string"';
-    return `  # ${property.definition || property.label}\n  <${property.iri}> ${target}`;
+    const description =
+      state.detailMode === "detailed" ? `  # ${property.definition || property.label}\n` : "";
+    return `${description}  <${property.iri}> ${target}`;
   });
-  return `# ${value.definition || value.label}\n<${value.iri}>\n  a <${value.profiledClassIris[0] ?? value.iri}>${statements.length ? " ;\n" : " ."}${statements.join(" ;\n")} .`;
+  const description =
+    state.detailMode === "detailed" ? `# ${value.definition || value.label}\n` : "";
+  return `${description}<${value.iri}>\n  a <${value.profiledClassIris[0] ?? value.iri}>${statements.length ? " ;\n" : " ."}${statements.join(" ;\n")} .`;
 }
 
 function propertyTypeName(property: ExplorerProperty): string {
