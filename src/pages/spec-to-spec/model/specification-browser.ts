@@ -20,7 +20,7 @@ export interface SpecificationBrowserNode {
   iri: string;
   resourceUrl?: string;
   description?: string;
-  statistics: SpecificationBrowserStatistics;
+  statistics?: SpecificationBrowserStatistics;
   artifacts: SpecificationBrowserArtifact[];
 }
 
@@ -39,9 +39,9 @@ export interface SpecificationBrowserCounts {
 }
 
 export interface SpecificationBrowserStatistics {
-  classes?: number;
-  properties?: number;
-  artifacts?: number;
+  internalSpecifications: number;
+  externalSpecifications: number;
+  artifacts: number;
 }
 
 export interface SpecificationBrowserArtifact {
@@ -135,6 +135,12 @@ function truncateTitle(title: string, maximumLength: number): string {
 /** Creates the display-ready node and edge model consumed by the S2S browser. */
 export function createSpecificationBrowser(specification: Specification): SpecificationBrowser {
   const focalNodeId = specification.metadata.id;
+  const internalSpecifications = specification.relatedSpecifications.filter(
+    (relation) => relation.kind === "published-specification",
+  ).length;
+  const externalSpecifications = specification.relatedSpecifications.filter(
+    (relation) => relation.kind === "external-resource",
+  ).length;
   const focalNode: SpecificationBrowserNode = {
     id: focalNodeId,
     title: selectLocalizedString(specification.metadata.title) ?? "Untitled specification",
@@ -148,6 +154,8 @@ export function createSpecificationBrowser(specification: Specification): Specif
     resourceUrl: specification.metadata.sourceUrl,
     description: selectLocalizedString(specification.metadata.description),
     statistics: {
+      internalSpecifications,
+      externalSpecifications,
       artifacts: specification.artifacts.length,
     },
     artifacts: specification.artifacts.map((artifact) => ({
@@ -175,7 +183,6 @@ export function createSpecificationBrowser(specification: Specification): Specif
         kindLabel: relation.kind === "published-specification" ? "Published Spec" : "External",
         iri: relation.targetIri,
         resourceUrl: relation.targetUrl,
-        statistics: {},
         artifacts: [],
       };
     },
@@ -195,8 +202,8 @@ export function createSpecificationBrowser(specification: Specification): Specif
     edges,
     counts: {
       all: relatedNodes.length,
-      published: relatedNodes.filter((node) => node.kind === "published-specification").length,
-      external: relatedNodes.filter((node) => node.kind === "external-resource").length,
+      published: internalSpecifications,
+      external: externalSpecifications,
     },
   };
 }

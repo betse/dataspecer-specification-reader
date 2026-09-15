@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { routes } from "../../app/router";
 import { loadSpecificationFromUrl } from "../../data/loading/load-specification-from-url";
 import { useSpecificationState, type DetailMode } from "../../state/specification-state";
+import { defaultSpecifications, type DefaultSpecification } from "./default-specifications";
 
 const router = useRouter();
+const route = useRoute();
 const state = useSpecificationState();
 const sourceUrl = ref("");
 const detailMode = ref<DetailMode>(state.detailMode);
 
+onMounted(() => {
+  const requestedUrl = route.query.specificationUrl;
+  if (typeof requestedUrl !== "string" || !requestedUrl.trim()) return;
+  sourceUrl.value = normalizeUrl(requestedUrl);
+  void openSpecification();
+});
+
 async function openSpecification() {
-  const url = sourceUrl.value.trim();
+  const url = normalizeUrl(sourceUrl.value);
   if (!url) {
     state.setError("Enter a specification URL.");
     return;
@@ -30,6 +39,16 @@ async function openSpecification() {
   } finally {
     state.setLoading(false);
   }
+}
+
+function normalizeUrl(value: string): string {
+  const markdownLink = value.trim().match(/^\[[^\]]*\]\((https?:\/\/[^)]+)\)$/i);
+  return markdownLink?.[1] ?? value.trim();
+}
+
+function selectDefaultSpecification(specification: DefaultSpecification) {
+  sourceUrl.value = specification.url;
+  state.setError(null);
 }
 </script>
 
@@ -92,6 +111,39 @@ async function openSpecification() {
           Detail
         </label>
       </div>
+    </div>
+  </section>
+
+  <section class="specs-section" aria-labelledby="preloaded-specifications-title">
+    <header class="specs-header">
+      <div>
+        <h2 id="preloaded-specifications-title" class="specs-title">Preloaded specifications</h2>
+        <p class="specs-sub">Select a specification, then open it using the URL field above.</p>
+      </div>
+      <div class="specs-count">{{ defaultSpecifications.length }} specifications</div>
+    </header>
+
+    <div class="specs-grid">
+      <button
+        v-for="specification in defaultSpecifications"
+        :key="specification.id"
+        class="spec-card"
+        :class="{ active: sourceUrl === specification.url }"
+        :style="{ '--card-accent': specification.accent }"
+        type="button"
+        @click="selectDefaultSpecification(specification)"
+      >
+        <span class="card-header">
+          <span class="card-icon">{{ specification.icon }}</span>
+          <span class="card-title-group">
+            <strong class="card-title">{{ specification.title }}</strong>
+            <span class="card-subtitle">{{ specification.subtitle }}</span>
+          </span>
+        </span>
+        <span class="card-desc">{{ specification.description }}</span>
+        <span class="card-url">{{ specification.url }}</span>
+        <span class="card-arrow" aria-hidden="true">→</span>
+      </button>
     </div>
   </section>
 </template>
@@ -258,6 +310,16 @@ async function openSpecification() {
   transform: translateX(2px);
 }
 
+:global([data-theme="dark"] .open-btn) {
+  background: #2454d6;
+  color: #fff;
+}
+
+:global([data-theme="dark"] .open-btn:hover:not(:disabled)) {
+  background: #315fda;
+  color: #fff;
+}
+
 .open-btn:disabled {
   cursor: progress;
   opacity: 0.7;
@@ -292,6 +354,7 @@ async function openSpecification() {
 .mode-options {
   display: flex;
   gap: 6px;
+  flex-direction: row;
 }
 
 .mode-radio {
@@ -348,6 +411,174 @@ async function openSpecification() {
   content: "";
 }
 
+.specs-section {
+  position: relative;
+  z-index: 1;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 32px 80px;
+}
+
+.specs-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.specs-title {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.specs-sub {
+  margin-top: 2px;
+  color: var(--text3);
+  font-size: 12px;
+}
+
+.specs-count {
+  color: var(--text3);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 12px;
+}
+
+.spec-card {
+  --card-accent: var(--accent);
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  transform: none;
+  transition: all 0.2s;
+}
+
+.spec-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 8px 8px 0 0;
+  background: var(--card-accent);
+  content: "";
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.spec-card:hover,
+.spec-card.active {
+  border-color: var(--card-accent);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+.spec-card.active {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 15%, transparent);
+}
+
+.spec-card:hover::before,
+.spec-card.active::before {
+  opacity: 1;
+}
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.card-icon {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card-accent) 12%, var(--surface));
+  color: var(--card-accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.card-title-group {
+  min-width: 0;
+  flex: 1;
+}
+
+.card-title,
+.card-subtitle {
+  display: block;
+}
+
+.card-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-subtitle {
+  color: var(--text3);
+  font-size: 11px;
+}
+
+.card-desc {
+  flex: 1;
+  margin-bottom: 14px;
+  color: var(--text2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.card-url {
+  overflow: hidden;
+  padding-right: 18px;
+  color: var(--text3);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-arrow {
+  position: absolute;
+  right: 16px;
+  bottom: 13px;
+  color: var(--card-accent);
+  font-size: 18px;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.spec-card:hover .card-arrow,
+.spec-card.active .card-arrow {
+  opacity: 1;
+}
+
 @media (max-width: 700px) {
   .input-row,
   .mode-row {
@@ -365,6 +596,12 @@ async function openSpecification() {
 
   .open-btn {
     justify-content: center;
+  }
+
+  .specs-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
   }
 }
 </style>

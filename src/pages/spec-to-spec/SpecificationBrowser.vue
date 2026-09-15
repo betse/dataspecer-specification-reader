@@ -13,7 +13,7 @@ import {
   type ZoomBehavior,
 } from "d3";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import { routes } from "../../app/router";
 import type {
   SpecificationBrowser,
@@ -30,6 +30,7 @@ type GraphLink = SimulationLinkDatum<GraphNode>;
 type PositionedNode = { node: BrowserNode; x: number; y: number };
 
 const props = defineProps<{ browser: SpecificationBrowser }>();
+const router = useRouter();
 
 const query = ref("");
 const scope = ref<Scope>("all");
@@ -185,7 +186,19 @@ function nodeClass(kind: SpecificationBrowserNodeKind): string {
 }
 
 function targetLink(node: SpecificationBrowserNode): string {
-  return node.resourceUrl ?? node.iri;
+  return normalizeUrl(node.resourceUrl ?? node.iri);
+}
+
+function normalizeUrl(value: string): string {
+  const markdownLink = value.trim().match(/^\[[^\]]*\]\((https?:\/\/[^)]+)\)$/i);
+  return markdownLink?.[1] ?? value.trim();
+}
+
+function readerLink(node: SpecificationBrowserNode): string {
+  return router.resolve({
+    path: routes.landing,
+    query: { specificationUrl: targetLink(node) },
+  }).href;
 }
 
 function changeZoom(factor: number): void {
@@ -233,7 +246,9 @@ function resetGraph(closeSelection = true): void {
             <span class="rf-dot all"></span>
             <span>All specifications</span>
             <span class="rf-count">{{ browser.counts.all }}</span>
-            <span class="rf-check"><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg></span>
+            <span class="rf-check"
+              ><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg
+            ></span>
           </button>
           <button
             class="rel-filter-item"
@@ -244,7 +259,9 @@ function resetGraph(closeSelection = true): void {
             <span class="rf-dot published"></span>
             <span>Published specifications</span>
             <span class="rf-count">{{ publishedCount }}</span>
-            <span class="rf-check"><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg></span>
+            <span class="rf-check"
+              ><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg
+            ></span>
           </button>
           <button
             class="rel-filter-item"
@@ -255,7 +272,9 @@ function resetGraph(closeSelection = true): void {
             <span class="rf-dot external"></span>
             <span>External resources</span>
             <span class="rf-count">{{ externalCount }}</span>
-            <span class="rf-check"><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg></span>
+            <span class="rf-check"
+              ><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg
+            ></span>
           </button>
         </div>
       </div>
@@ -270,7 +289,9 @@ function resetGraph(closeSelection = true): void {
           @click="selectNode(node)"
         >
           <span class="sli-dot" :class="nodeClass(node.kind)"></span>
-          <span class="sli-name">{{ node.title }}<template v-if="node.kind === 'focal'"> ★</template></span>
+          <span class="sli-name"
+            >{{ node.title }}<template v-if="node.kind === 'focal'"> ★</template></span
+          >
           <span class="sli-type">{{ node.kindLabel }}</span>
         </button>
         <p v-if="!listedNodes.length" class="list-empty">No specifications match this search.</p>
@@ -406,26 +427,31 @@ function resetGraph(closeSelection = true): void {
             <div class="drawer-desc">
               {{
                 selectedNode.description ??
-                  "No description is available in the loaded specification metadata."
+                "No description is available in the loaded specification metadata."
               }}
             </div>
           </div>
 
-          <div class="drawer-section">
+          <div
+            v-if="selectedNode.kind === 'focal' && selectedNode.statistics"
+            class="drawer-section"
+          >
             <div class="drawer-section-label">Statistics</div>
             <div class="drawer-stat-row">
               <div class="drawer-stat">
-                <div class="drawer-stat-n">{{ selectedNode.statistics.classes ?? "—" }}</div>
-                <div class="drawer-stat-l">Classes</div>
-              </div>
-              <div class="drawer-stat">
-                <div class="drawer-stat-n">{{ selectedNode.statistics.properties ?? "—" }}</div>
-                <div class="drawer-stat-l">Props</div>
+                <div class="drawer-stat-n">
+                  {{ selectedNode.statistics.internalSpecifications }}
+                </div>
+                <div class="drawer-stat-l">Internal specs</div>
               </div>
               <div class="drawer-stat">
                 <div class="drawer-stat-n">
-                  {{ selectedNode.statistics.artifacts ?? "—" }}
+                  {{ selectedNode.statistics.externalSpecifications }}
                 </div>
+                <div class="drawer-stat-l">External specs</div>
+              </div>
+              <div class="drawer-stat">
+                <div class="drawer-stat-n">{{ selectedNode.statistics.artifacts }}</div>
                 <div class="drawer-stat-l">Artifacts</div>
               </div>
             </div>
@@ -462,13 +488,30 @@ function resetGraph(closeSelection = true): void {
               Open in Explorer
             </RouterLink>
           </template>
+          <template v-else-if="selectedNode.kind === 'published-specification'">
+            <a
+              class="drawer-action primary"
+              :href="readerLink(selectedNode)"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open specification ↗</a
+            >
+            <a
+              class="drawer-action secondary"
+              :href="targetLink(selectedNode)"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open original source ↗</a
+            >
+          </template>
           <a
-            v-else
+            v-else-if="selectedNode.kind === 'external-resource'"
             class="drawer-action primary"
             :href="targetLink(selectedNode)"
             target="_blank"
-            rel="noreferrer"
-          >Open referenced resource ↗</a>
+            rel="noopener noreferrer"
+            >Open external resource ↗</a
+          >
         </div>
       </template>
     </aside>
@@ -490,6 +533,16 @@ function resetGraph(closeSelection = true): void {
   display: flex;
   min-width: 0;
   overflow: hidden;
+  background: var(--graph-bg);
+}
+:global([data-theme="dark"] .browser-panel) {
+  --node-vocab-fill: #72c294;
+  --node-vocab-bg: #173b2a;
+  --node-ext-fill: #a8a5b3;
+  --node-ext-bg: #363942;
+  --edge-profile: #b8c9ff;
+  --graph-bg: #293041;
+  --graph-dot: #484556;
 }
 .browser-sidebar {
   width: 270px;
@@ -1047,6 +1100,16 @@ function resetGraph(closeSelection = true): void {
 }
 .drawer-action.primary:hover {
   background: var(--accent2);
+}
+:global([data-theme="dark"] .drawer-action.primary) {
+  border-color: #315fda;
+  background: #2454d6;
+  color: #fff;
+}
+:global([data-theme="dark"] .drawer-action.primary:hover) {
+  border-color: #4772df;
+  background: #315fda;
+  color: #fff;
 }
 .drawer-action.secondary {
   background: var(--surface2);

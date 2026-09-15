@@ -413,6 +413,9 @@ function cleanText(value?: string | null): string {
   background: var(--surface);
   color: var(--text2);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .zoom-controls button:hover {

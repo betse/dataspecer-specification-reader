@@ -90,12 +90,12 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
             </div>
             <div class="stats-grid">
               <div class="stat-cell">
-                <div class="stat-n">{{ overview.statistics.classes ?? "—" }}</div>
-                <div class="stat-l">Classes</div>
+                <div class="stat-n">{{ overview.statistics.internalSpecifications }}</div>
+                <div class="stat-l">Internal spec</div>
               </div>
               <div class="stat-cell">
-                <div class="stat-n">{{ overview.statistics.properties ?? "—" }}</div>
-                <div class="stat-l">Properties</div>
+                <div class="stat-n">{{ overview.statistics.externalSpecifications }}</div>
+                <div class="stat-l">External spec</div>
               </div>
               <div class="stat-cell">
                 <div class="stat-n">{{ overview.statistics.artifacts }}</div>
@@ -432,6 +432,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 .stat-cell {
   padding: 16px 20px;
   background: var(--surface);
+  text-align: center;
 }
 
 .stat-n {
@@ -754,6 +755,18 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   border-color: var(--accent2);
   background: var(--accent2);
   text-decoration: none;
+}
+
+:global([data-theme="dark"] .ov-action-btn.primary) {
+  border-color: #315fda;
+  background: #2454d6;
+  color: #fff;
+}
+
+:global([data-theme="dark"] .ov-action-btn.primary:hover) {
+  border-color: #4772df;
+  background: #315fda;
+  color: #fff;
 }
 
 .ov-action-btn.secondary {

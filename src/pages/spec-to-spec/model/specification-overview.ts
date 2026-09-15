@@ -25,8 +25,8 @@ export interface SpecificationOverviewMetadataRow {
 }
 
 export interface SpecificationOverviewStatistics {
-  classes?: number;
-  properties?: number;
+  internalSpecifications: number;
+  externalSpecifications: number;
   artifacts: number;
 }
 
@@ -77,6 +77,12 @@ export function createSpecificationOverview(specification: Specification): Speci
       sourceUrl ? { label: "Source", value: sourceUrl, href: sourceUrl } : undefined,
     ].filter((row): row is SpecificationOverviewMetadataRow => row !== undefined),
     statistics: {
+      internalSpecifications: specification.relatedSpecifications.filter(
+        (relation) => relation.kind === "published-specification",
+      ).length,
+      externalSpecifications: specification.relatedSpecifications.filter(
+        (relation) => relation.kind === "external-resource",
+      ).length,
       artifacts: specification.artifacts.length,
     },
     artifacts: specification.artifacts.map(createOverviewArtifact),

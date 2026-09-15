@@ -62,10 +62,12 @@ function closeSettingsOutside(event: unknown) {
       </RouterLink>
 
       <nav class="tb-nav" aria-label="Main navigation">
-        <RouterLink :to="routes.specToSpec">Spec-to-Spec</RouterLink>
-        <RouterLink :to="routes.primer">Primer</RouterLink>
-        <RouterLink :to="routes.specExplorer">Explorer</RouterLink>
-        <span class="tb-separator"></span>
+        <template v-if="state.specification">
+          <RouterLink :to="routes.specToSpec">Spec-to-Spec</RouterLink>
+          <RouterLink :to="routes.primer">Primer</RouterLink>
+          <RouterLink :to="routes.specExplorer">Explorer</RouterLink>
+          <span class="tb-separator"></span>
+        </template>
         <a href="https://dataspecer.com" target="_blank" rel="noreferrer">Dataspecer ↗</a>
         <span class="tb-separator"></span>
 

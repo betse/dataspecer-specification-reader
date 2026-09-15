@@ -15,9 +15,15 @@ const semanticError = ref<string>();
 const selectedClassIri = ref<string>();
 const selectedSvgNode = ref<InteractiveSvgSelection>();
 const diagramClassIris = ref<string[]>([]);
+const showAllProfiles = ref(false);
+const showAllRequirements = ref(false);
+const showAllResources = ref(false);
 
 const MAX_KEY_CLASSES = 8;
 const MAX_PROPERTIES_PER_CLASS = 5;
+const SIMPLE_PROFILE_LIMIT = 3;
+const SIMPLE_REQUIREMENT_LIMIT = 5;
+const SIMPLE_RESOURCE_LIMIT = 4;
 
 const primer = computed(() =>
   state.specification ? createPrimer(state.specification, semanticSpecification.value) : null,
@@ -137,6 +143,21 @@ const keyPropertyProfiles = computed(() => {
   }
   return selected;
 });
+const visibleKeyClasses = computed(() =>
+  state.detailMode === "detailed" || showAllProfiles.value
+    ? keyClasses.value
+    : keyClasses.value.slice(0, SIMPLE_PROFILE_LIMIT),
+);
+const visibleKeyPropertyProfiles = computed(() =>
+  state.detailMode === "detailed" || showAllRequirements.value
+    ? keyPropertyProfiles.value
+    : keyPropertyProfiles.value.slice(0, SIMPLE_REQUIREMENT_LIMIT),
+);
+const visibleResources = computed(() =>
+  state.detailMode === "detailed" || showAllResources.value
+    ? (primer.value?.resources ?? [])
+    : (primer.value?.resources ?? []).slice(0, SIMPLE_RESOURCE_LIMIT),
+);
 
 watch(
   () => state.specification,
@@ -166,6 +187,15 @@ watch(
     }
   },
   { immediate: true },
+);
+
+watch(
+  () => state.detailMode,
+  () => {
+    showAllProfiles.value = false;
+    showAllRequirements.value = false;
+    showAllResources.value = false;
+  },
 );
 
 function selectClass(iri: string) {
@@ -283,13 +313,13 @@ function termLabel(iri?: string): string {
         </article>
       </div>
 
-      <div v-if="semanticError || primer.warnings.length" class="semantic-notices">
+      <!-- <div v-if="semanticError || primer.warnings.length" class="semantic-notices">
         <strong>Some semantic data could not be loaded.</strong>
         <ul>
           <li v-if="semanticError">{{ semanticError }}</li>
           <li v-for="warning in primer.warnings" :key="warning">{{ warning }}</li>
         </ul>
-      </div>
+      </div> -->
 
       <nav class="section-nav" aria-label="Primer sections">
         <a href="#diagram">Diagram</a>
@@ -435,7 +465,7 @@ function termLabel(iri?: string): string {
         </div>
         <div v-else-if="keyClasses.length" class="profile-grid">
           <button
-            v-for="item in keyClasses"
+            v-for="item in visibleKeyClasses"
             :key="item.iri"
             class="profile-card"
             :class="{ selected: selectedClassIri === item.iri }"
@@ -455,6 +485,14 @@ function termLabel(iri?: string): string {
         <div v-else class="unavailable-state">
           <strong>No classes or class profiles were found.</strong>
           <p>The published RDF resources do not contain supported class definitions.</p>
+        </div>
+        <div
+          v-if="state.detailMode === 'simple' && keyClasses.length > SIMPLE_PROFILE_LIMIT"
+          class="section-controls"
+        >
+          <button type="button" @click="showAllProfiles = !showAllProfiles">
+            {{ showAllProfiles ? "Show less" : `Show all ${keyClasses.length} profiles` }}
+          </button>
         </div>
       </section>
 
@@ -479,7 +517,7 @@ function termLabel(iri?: string): string {
               </tr>
             </thead>
             <tbody v-if="keyPropertyProfiles.length">
-              <tr v-for="property in keyPropertyProfiles" :key="property.iri">
+              <tr v-for="property in visibleKeyPropertyProfiles" :key="property.iri">
                 <td>{{ termLabel(property.domainIri) }}</td>
                 <td>
                   <strong>{{ property.label }}</strong>
@@ -495,6 +533,20 @@ function termLabel(iri?: string): string {
               </tr>
             </tbody>
           </table>
+        </div>
+        <div
+          v-if="
+            state.detailMode === 'simple' && keyPropertyProfiles.length > SIMPLE_REQUIREMENT_LIMIT
+          "
+          class="section-controls"
+        >
+          <button type="button" @click="showAllRequirements = !showAllRequirements">
+            {{
+              showAllRequirements
+                ? "Show less"
+                : `Show all ${keyPropertyProfiles.length} requirements`
+            }}
+          </button>
         </div>
       </section>
 
@@ -517,7 +569,7 @@ function termLabel(iri?: string): string {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="resource in primer.resources" :key="resource.id">
+              <tr v-for="resource in visibleResources" :key="resource.id">
                 <td>
                   <strong>{{ resource.title }}</strong>
                   <span v-if="resource.mediaType" class="resource-media">
@@ -545,6 +597,14 @@ function termLabel(iri?: string): string {
         <div v-else class="unavailable-state">
           <strong>No published artifacts were found.</strong>
           <p>The loaded specification metadata does not advertise additional resources.</p>
+        </div>
+        <div
+          v-if="state.detailMode === 'simple' && primer.resources.length > SIMPLE_RESOURCE_LIMIT"
+          class="section-controls"
+        >
+          <button type="button" @click="showAllResources = !showAllResources">
+            {{ showAllResources ? "Show less" : `Show all ${primer.resources.length} resources` }}
+          </button>
         </div>
 
         <div class="actions">
@@ -1048,6 +1108,45 @@ h1 {
   text-transform: uppercase;
 }
 
+.simple-mode-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 14px;
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12px;
+}
+
+.simple-mode-note button,
+.section-controls button {
+  border: 1px solid var(--accent-mid);
+  border-radius: 7px;
+  padding: 7px 11px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.simple-mode-note button:hover,
+.section-controls button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.section-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
 .unavailable-state {
   padding: 28px;
   background: var(--surface2);
@@ -1144,6 +1243,18 @@ tbody tr:last-child td {
 .action.primary {
   border-color: var(--accent);
   background: var(--accent);
+  color: #fff;
+}
+
+:global([data-theme="dark"] .action.primary) {
+  border-color: #315fda;
+  background: #2454d6;
+  color: #fff;
+}
+
+:global([data-theme="dark"] .action.primary:hover) {
+  border-color: #4772df;
+  background: #315fda;
   color: #fff;
 }
 
