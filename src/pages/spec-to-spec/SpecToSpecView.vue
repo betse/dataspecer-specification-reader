@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/router";
 import { useSpecificationState } from "../../state/specification-state";
@@ -12,6 +12,8 @@ type S2STab = "overview" | "browser";
 const state = useSpecificationState();
 const specification = computed(() => state.specification);
 const activeTab = ref<S2STab>("overview");
+const showAllArtifacts = ref(false);
+const SIMPLE_ARTIFACT_LIMIT = 4;
 const overview = computed(() =>
   specification.value ? createSpecificationOverview(specification.value) : null,
 );
@@ -19,6 +21,15 @@ const browser = computed(() =>
   specification.value ? createSpecificationBrowser(specification.value) : null,
 );
 const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3).join(" ") ?? "");
+const visibleArtifacts = computed(() =>
+  state.detailMode === "detailed" || showAllArtifacts.value
+    ? (overview.value?.artifacts ?? [])
+    : (overview.value?.artifacts ?? []).slice(0, SIMPLE_ARTIFACT_LIMIT),
+);
+
+watch([() => state.detailMode, specification], () => {
+  showAllArtifacts.value = false;
+});
 </script>
 
 <template>
@@ -131,7 +142,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
             </div>
             <div v-if="overview.artifacts.length" class="artifact-list">
               <a
-                v-for="artifact in overview.artifacts"
+                v-for="artifact in visibleArtifacts"
                 :key="artifact.id"
                 class="artifact-row"
                 :href="artifact.url"
@@ -158,6 +169,20 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
               </a>
             </div>
             <p v-else class="empty-copy">No generated artifacts were found in the JSON-LD.</p>
+            <div
+              v-if="
+                state.detailMode === 'simple' && overview.artifacts.length > SIMPLE_ARTIFACT_LIMIT
+              "
+              class="artifact-controls"
+            >
+              <button type="button" @click="showAllArtifacts = !showAllArtifacts">
+                {{
+                  showAllArtifacts
+                    ? "Show fewer artifacts"
+                    : `Show ${overview.artifacts.length - SIMPLE_ARTIFACT_LIMIT} more artifacts`
+                }}
+              </button>
+            </div>
           </div>
 
           <div class="ov-section">
@@ -265,7 +290,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   color: var(--text2);
   cursor: pointer;
   font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   font-weight: 400;
   transition: all 0.15s;
 }
@@ -311,7 +336,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   padding: 4px 10px;
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 500;
 }
 
@@ -355,7 +380,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   margin-bottom: 8px;
   color: var(--accent);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -382,7 +407,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   max-width: 540px;
   margin-bottom: 16px;
   color: var(--text2);
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   line-height: 1.75;
 }
 
@@ -401,7 +426,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   padding: 4px 10px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 500;
 }
 
@@ -439,14 +464,14 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   margin-bottom: 2px;
   color: var(--text);
   font-family: "Jost", sans-serif;
-  font-size: 30px;
+  font-size: calc(30px + var(--responsive-font-increase));
   font-weight: 500;
   line-height: 1;
 }
 
 .stat-l {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -480,7 +505,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 
 .ov-heading-text {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -502,7 +527,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 
 .meta-table td {
   padding: 10px 0;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   vertical-align: top;
 }
 
@@ -510,7 +535,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   width: 160px;
   padding-right: 16px;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -529,7 +554,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 .mono-val {
   color: var(--text2);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   word-break: break-word;
 }
 
@@ -537,6 +562,29 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.artifact-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.artifact-controls button {
+  border: 1px solid var(--accent-mid);
+  border-radius: 7px;
+  padding: 7px 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: calc(12px + var(--responsive-font-increase));
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.artifact-controls button:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
 }
 
 .artifact-row {
@@ -571,7 +619,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   background: var(--accent-bg);
   color: var(--accent);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -615,14 +663,14 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 
 .artifact-name {
   color: var(--text);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   font-weight: 500;
 }
 
 .artifact-type {
   color: var(--text3);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   word-break: break-word;
 }
 
@@ -633,7 +681,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   padding: 2px 8px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 600;
 }
 
@@ -676,7 +724,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   background: var(--surface);
   color: inherit;
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-decoration: none;
   transition: all 0.15s;
 }
@@ -703,17 +751,17 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
 .rel-chip-rel {
   color: var(--text3);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 
 .rel-chip-arrow {
   color: var(--text3);
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
 }
 
 .empty-copy {
   color: var(--text3);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
 }
 
 .ov-actions {
@@ -734,7 +782,7 @@ const focusLabel = computed(() => overview.value?.title.split(/\s+/).slice(0, 3)
   padding: 10px 18px;
   cursor: pointer;
   font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   font-weight: 500;
   text-decoration: none;
   transition: all 0.15s;

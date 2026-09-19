@@ -563,7 +563,7 @@ function resetGraph(closeSelection = true): void {
 .bs-head-title {
   margin-bottom: 10px;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -594,7 +594,7 @@ function resetGraph(closeSelection = true): void {
   background: var(--surface2);
   color: var(--text);
   font-family: "Jost", sans-serif;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   transition: border-color 0.15s;
 }
 .search-input:focus {
@@ -620,7 +620,7 @@ function resetGraph(closeSelection = true): void {
   color: var(--text2);
   cursor: pointer;
   font-family: "Jost", sans-serif;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-align: left;
   transition: background 0.1s;
 }
@@ -656,7 +656,7 @@ function resetGraph(closeSelection = true): void {
   margin-left: auto;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .rf-check {
   display: flex;
@@ -734,7 +734,7 @@ function resetGraph(closeSelection = true): void {
   flex: 1;
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -742,12 +742,12 @@ function resetGraph(closeSelection = true): void {
   flex-shrink: 0;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
 }
 .list-empty {
   padding: 12px 16px;
   color: var(--text3);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 .graph-area {
   position: relative;
@@ -777,7 +777,7 @@ function resetGraph(closeSelection = true): void {
   align-items: center;
   gap: 5px;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .gl-dot {
   width: 9px;
@@ -787,7 +787,7 @@ function resetGraph(closeSelection = true): void {
 .graph-hint {
   margin-left: auto;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-style: italic;
 }
 .graph-controls {
@@ -806,12 +806,12 @@ function resetGraph(closeSelection = true): void {
   color: var(--text2);
   cursor: pointer;
   font-family: "Jost", sans-serif;
-  font-size: 16px;
+  font-size: calc(16px + var(--responsive-font-increase));
   line-height: 1;
   transition: all 0.12s;
 }
 .gc-btn.reset {
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 .gc-btn:hover {
   border-color: var(--border2);
@@ -847,7 +847,7 @@ function resetGraph(closeSelection = true): void {
 .edge-label {
   fill: var(--edge-profile);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   opacity: 0.75;
   paint-order: stroke;
   stroke: var(--graph-bg);
@@ -885,7 +885,7 @@ function resetGraph(closeSelection = true): void {
 .graph-node text {
   fill: var(--text);
   font-family: "Jost", sans-serif;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 500;
   pointer-events: none;
 }
@@ -895,13 +895,13 @@ function resetGraph(closeSelection = true): void {
 }
 .graph-node .node-type {
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 400;
   opacity: 0.7;
 }
 .graph-node .focal-star {
   font-family: sans-serif;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   opacity: 0.8;
 }
 .graph-empty {
@@ -911,7 +911,7 @@ function resetGraph(closeSelection = true): void {
   align-items: center;
   justify-content: center;
   color: var(--text3);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   pointer-events: none;
 }
 .detail-drawer {
@@ -944,7 +944,7 @@ function resetGraph(closeSelection = true): void {
 }
 .drawer-title {
   color: var(--text);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
   font-weight: 600;
   line-height: 1.3;
 }
@@ -952,7 +952,7 @@ function resetGraph(closeSelection = true): void {
   margin-top: 2px;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .drawer-close {
   margin-left: auto;
@@ -962,7 +962,7 @@ function resetGraph(closeSelection = true): void {
   color: var(--text3);
   cursor: pointer;
   font-family: "Jost", sans-serif;
-  font-size: 18px;
+  font-size: calc(18px + var(--responsive-font-increase));
   line-height: 1;
   transition: color 0.12s;
 }
@@ -980,14 +980,14 @@ function resetGraph(closeSelection = true): void {
 .drawer-section-label {
   margin-bottom: 6px;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
 }
 .drawer-desc {
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.65;
 }
 .rel-badge {
@@ -998,7 +998,7 @@ function resetGraph(closeSelection = true): void {
   padding: 4px 10px;
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 600;
 }
 .drawer-stat-row {
@@ -1015,12 +1015,12 @@ function resetGraph(closeSelection = true): void {
 .drawer-stat-n {
   color: var(--text);
   font-family: "Jost", sans-serif;
-  font-size: 20px;
+  font-size: calc(20px + var(--responsive-font-increase));
   font-weight: 500;
 }
 .drawer-stat-l {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1028,7 +1028,7 @@ function resetGraph(closeSelection = true): void {
 .drawer-iri {
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -1044,7 +1044,7 @@ function resetGraph(closeSelection = true): void {
   border-bottom: 1px solid var(--border);
   padding: 4px 0;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   text-decoration: none;
 }
 .dam-row:last-child {
@@ -1057,7 +1057,7 @@ function resetGraph(closeSelection = true): void {
   background: var(--surface2);
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
 }
 .dam-name {
@@ -1069,7 +1069,7 @@ function resetGraph(closeSelection = true): void {
 }
 .dam-role {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .drawer-footer {
   display: flex;
@@ -1088,7 +1088,7 @@ function resetGraph(closeSelection = true): void {
   padding: 9px 14px;
   cursor: pointer;
   font-family: "Jost", sans-serif;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 500;
   text-decoration: none;
   transition: all 0.15s;

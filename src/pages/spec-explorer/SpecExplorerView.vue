@@ -148,14 +148,22 @@ watch(
   (classes) => {
     if (!classes) return;
     selectedClassIris.value = classes.slice(0, 2).map((value) => value.iri);
+    if (state.detailMode === "simple") {
+      for (const value of classes) {
+        const existing = panelStates[value.iri];
+        if (existing?.requirement === "mandatory" && !hasMandatoryProperty(value.iri)) {
+          existing.requirement = "";
+        }
+      }
+    }
   },
 );
 
 watch(
   () => state.detailMode,
   (mode) => {
-    for (const value of Object.values(panelStates)) {
-      value.requirement = mode === "simple" ? "mandatory" : "";
+    for (const [classIri, value] of Object.entries(panelStates)) {
+      value.requirement = mode === "simple" ? defaultSimpleRequirement(classIri) : "";
       value.columnOverrides = {};
     }
   },
@@ -163,13 +171,25 @@ watch(
 
 function panelState(iri: string): PanelState {
   return (panelStates[iri] ??= {
-    requirement: state.detailMode === "simple" ? "mandatory" : "",
+    requirement: state.detailMode === "simple" ? defaultSimpleRequirement(iri) : "",
     propertyKind: "",
     search: "",
     detailsOpen: false,
     columnOverrides: {},
     sortDirection: 1,
   });
+}
+
+function defaultSimpleRequirement(classIri: string): string {
+  return hasMandatoryProperty(classIri) ? "mandatory" : "";
+}
+
+function hasMandatoryProperty(classIri: string): boolean {
+  return (
+    explorer.value?.classes
+      .find((value) => value.iri === classIri)
+      ?.properties.some((property) => property.requirement === "mandatory") ?? false
+  );
 }
 
 function isColumnVisible(classIri: string, column: ExplorerColumn): boolean {
@@ -908,7 +928,7 @@ function safeIdentifier(value?: string): string {
   --mono: "JetBrains Mono", monospace;
   font-family: "Jost", sans-serif;
   height: calc(100vh - 52px);
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   line-height: 1.6;
   background: var(--bg);
   color: var(--text);
@@ -953,7 +973,7 @@ function safeIdentifier(value?: string): string {
 .sb-section-label {
   margin-bottom: 7px;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -981,7 +1001,7 @@ function safeIdentifier(value?: string): string {
   outline: none;
   background: var(--surface2);
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 .search-input:focus {
   border-color: var(--accent);
@@ -998,7 +1018,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 20px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 500;
   line-height: 1.4;
   transform: none;
@@ -1031,7 +1051,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 0;
   background: none;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 500;
   transform: none;
 }
@@ -1102,7 +1122,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 3px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
 }
 .ci-badge.main,
@@ -1118,14 +1138,14 @@ function safeIdentifier(value?: string): string {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .ci-count {
   flex-shrink: 0;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .sb-footer {
   display: flex;
@@ -1163,7 +1183,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 0;
   background: none;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 400;
   transform: none;
 }
@@ -1201,7 +1221,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 4px;
   background: transparent;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 400;
   transform: none;
 }
@@ -1224,7 +1244,7 @@ function safeIdentifier(value?: string): string {
 .ctx-label {
   flex-shrink: 0;
   color: var(--accent);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1245,7 +1265,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 4px;
   background: var(--surface);
   color: var(--accent);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 500;
 }
 .ctx-tag button {
@@ -1253,7 +1273,7 @@ function safeIdentifier(value?: string): string {
   border: 0;
   background: none;
   color: var(--accent);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 400;
   line-height: 1;
   opacity: 0.5;
@@ -1261,13 +1281,13 @@ function safeIdentifier(value?: string): string {
 }
 .ctx-empty {
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-style: italic;
 }
 .ctx-count {
   margin-left: auto;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .panels-scroll {
   flex: 1;
@@ -1281,7 +1301,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 6px;
   background: #fff9e6;
   color: #72520c;
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .class-panel {
   margin-bottom: 18px;
@@ -1303,13 +1323,13 @@ function safeIdentifier(value?: string): string {
 .panel-class-name {
   margin: 0 0 2px;
   color: var(--text);
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   font-weight: 600;
 }
 .panel-iri {
   color: var(--text3);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   word-break: break-all;
 }
 .panel-detail-btn {
@@ -1323,7 +1343,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 8px;
   background: var(--bg);
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 400;
   white-space: nowrap;
   transform: none;
@@ -1361,7 +1381,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 20px;
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 500;
 }
 .meta-pill.profiled {
@@ -1394,14 +1414,14 @@ function safeIdentifier(value?: string): string {
   display: block;
   margin-bottom: 4px;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .ef-val {
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.55;
 }
 .back-list {
@@ -1413,12 +1433,12 @@ function safeIdentifier(value?: string): string {
   gap: 4px;
   padding: 1px 0;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .back-list li::before {
   content: "←";
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .ef-full {
   grid-column: 1/-1;
@@ -1440,7 +1460,7 @@ function safeIdentifier(value?: string): string {
 }
 .filter-label {
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   white-space: nowrap;
 }
 .filter-select {
@@ -1450,7 +1470,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 5px;
   background: var(--surface2);
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .tbl-search-wrap {
   position: relative;
@@ -1472,7 +1492,7 @@ function safeIdentifier(value?: string): string {
   outline: none;
   background: var(--surface2);
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   transition: width 0.2s;
 }
 .tbl-search-input:focus {
@@ -1481,7 +1501,7 @@ function safeIdentifier(value?: string): string {
 }
 .row-count {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .col-picker {
   position: relative;
@@ -1496,7 +1516,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 5px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 400;
   white-space: nowrap;
   transform: none;
@@ -1530,7 +1550,7 @@ function safeIdentifier(value?: string): string {
 .dd-section {
   padding: 6px 10px 4px;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1547,7 +1567,7 @@ function safeIdentifier(value?: string): string {
 }
 .dd-item-name {
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 .dd-item-name.off {
   color: var(--text3);
@@ -1564,7 +1584,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 4px;
   background: none;
   color: var(--text2);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
   font-weight: 400;
   line-height: 1;
   transform: none;
@@ -1595,7 +1615,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 5px;
   background: var(--surface2);
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 400;
   text-align: center;
   transform: none;
@@ -1613,14 +1633,14 @@ function safeIdentifier(value?: string): string {
 .spec-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 .spec-table th {
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.05em;
   text-align: left;
@@ -1635,7 +1655,7 @@ function safeIdentifier(value?: string): string {
 .sa {
   margin-left: 3px;
   color: var(--text);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   opacity: 0.25;
 }
 .spec-table th:hover .sa {
@@ -1690,7 +1710,7 @@ function safeIdentifier(value?: string): string {
   display: inline-flex;
   padding: 2px 7px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1720,7 +1740,7 @@ function safeIdentifier(value?: string): string {
 .mono-cell {
   color: var(--text2);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .definition-cell {
   max-width: 430px;
@@ -1733,7 +1753,7 @@ function safeIdentifier(value?: string): string {
 .iri-cell {
   color: var(--text3);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 .detail-row td {
   padding: 10px 14px 14px 36px !important;
@@ -1746,11 +1766,11 @@ function safeIdentifier(value?: string): string {
 }
 .df .dv {
   color: var(--text);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .df .dv.mono {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   overflow-wrap: anywhere;
 }
 .df .dv.muted {
@@ -1762,7 +1782,7 @@ function safeIdentifier(value?: string): string {
 .panel-empty {
   padding: 28px;
   color: var(--text3);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-align: center;
 }
 .no-selection {
@@ -1783,10 +1803,10 @@ function safeIdentifier(value?: string): string {
   opacity: 0.2;
 }
 .no-selection p {
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 .no-selection small {
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 .code-view {
   display: flex;
@@ -1804,7 +1824,7 @@ function safeIdentifier(value?: string): string {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1826,7 +1846,7 @@ function safeIdentifier(value?: string): string {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1842,7 +1862,7 @@ function safeIdentifier(value?: string): string {
   background: transparent;
   color: var(--text2);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 400;
   transform: none;
 }
@@ -1860,7 +1880,7 @@ function safeIdentifier(value?: string): string {
   border-radius: 0;
   background: transparent;
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 400;
   text-align: left;
   transform: none;
@@ -1883,7 +1903,7 @@ function safeIdentifier(value?: string): string {
   background: #1a1c24;
   color: #cdd6f4;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.8;
   white-space: pre;
 }
@@ -1913,7 +1933,7 @@ function safeIdentifier(value?: string): string {
   background: #252738;
   color: #aaa;
   font-family: "Jost", sans-serif;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 400;
   transform: none;
 }

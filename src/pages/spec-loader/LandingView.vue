@@ -153,7 +153,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   position: relative;
   z-index: 1;
   display: flex;
-  min-height: 100vh;
+  min-height: clamp(560px, 72vh, 760px);
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -168,7 +168,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   margin-bottom: 20px;
   color: var(--accent);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -209,7 +209,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   max-width: 480px;
   margin-bottom: 48px;
   color: var(--text2);
-  font-size: 15px;
+  font-size: calc(15px + var(--responsive-font-increase));
   font-weight: 300;
   line-height: 1.75;
   animation: fadeUp 0.6s 0.14s ease both;
@@ -230,7 +230,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   display: block;
   margin-bottom: 8px;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-align: left;
@@ -278,7 +278,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   background: transparent;
   color: var(--text);
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   outline: none;
 }
 
@@ -298,7 +298,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   color: #ffffff;
   cursor: pointer;
   font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: all 0.18s;
@@ -333,7 +333,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 .error-message {
   margin-top: 12px;
   color: #b91c1c;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 
 .mode-row {
@@ -347,7 +347,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 
 .mode-label-text {
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 500;
 }
 
@@ -367,7 +367,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   background: var(--surface);
   color: var(--text2);
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 400;
   transition: all 0.15s;
   user-select: none;
@@ -430,7 +430,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 
 .specs-title {
   color: var(--text);
-  font-size: 18px;
+  font-size: calc(18px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -438,13 +438,13 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 .specs-sub {
   margin-top: 2px;
   color: var(--text3);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 
 .specs-count {
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 
 .specs-grid {
@@ -518,7 +518,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   background: color-mix(in srgb, var(--card-accent) 12%, var(--surface));
   color: var(--card-accent);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 700;
 }
 
@@ -535,7 +535,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 .card-title {
   overflow: hidden;
   color: var(--text);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -543,14 +543,14 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 
 .card-subtitle {
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 
 .card-desc {
   flex: 1;
   margin-bottom: 14px;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.6;
 }
 
@@ -559,7 +559,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   padding-right: 18px;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -569,7 +569,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
   right: 16px;
   bottom: 13px;
   color: var(--card-accent);
-  font-size: 18px;
+  font-size: calc(18px + var(--responsive-font-increase));
   opacity: 0;
   transition: all 0.2s;
 }
@@ -580,6 +580,11 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 }
 
 @media (max-width: 700px) {
+  .hero {
+    min-height: auto;
+    padding: 100px 20px 56px;
+  }
+
   .input-row,
   .mode-row {
     align-items: stretch;

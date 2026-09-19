@@ -656,7 +656,7 @@ function termLabel(iri?: string): string {
   gap: 9px;
   margin-bottom: 10px;
   color: var(--accent);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -679,7 +679,7 @@ h1 {
 .lead {
   max-width: 700px;
   color: var(--text2);
-  font-size: 16px;
+  font-size: calc(16px + var(--responsive-font-increase));
   line-height: 1.75;
 }
 
@@ -700,7 +700,7 @@ h1 {
   padding: 3px 9px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 600;
 }
 
@@ -717,7 +717,7 @@ h1 {
   gap: 10px;
   margin-top: 14px;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 
 .source-line a {
@@ -745,7 +745,7 @@ h1 {
 }
 
 .stat-number {
-  font-size: 30px;
+  font-size: calc(30px + var(--responsive-font-increase));
   font-weight: 600;
   line-height: 1;
 }
@@ -753,7 +753,7 @@ h1 {
 .stat-label {
   margin-top: 5px;
   color: var(--text3);
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -777,7 +777,7 @@ h1 {
   padding: 14px 18px;
   background: var(--surface);
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 
 .semantic-notices ul {
@@ -800,18 +800,18 @@ h1 {
   flex: 0 0 28px;
   color: var(--accent);
   font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 700;
 }
 
 .context-card h2 {
   margin-bottom: 5px;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 
 .context-card p {
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.6;
 }
 
@@ -832,7 +832,7 @@ h1 {
   padding: 11px 16px;
   border-bottom: 2px solid transparent;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 600;
 }
 
@@ -854,7 +854,7 @@ h1 {
   margin-bottom: 8px;
   color: var(--accent);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 700;
 }
 
@@ -866,14 +866,14 @@ h1 {
 
 .primer-section > h2 {
   margin-bottom: 6px;
-  font-size: 26px;
+  font-size: calc(26px + var(--responsive-font-increase));
   font-weight: 600;
 }
 
 .section-description {
   margin-bottom: 20px;
   color: var(--text2);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
 }
 
 .diagram-layout {
@@ -904,7 +904,7 @@ h1 {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 
 .diagram-bar .availability {
@@ -933,7 +933,7 @@ h1 {
   border-top: 1px solid var(--border);
   border-bottom: 0;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 
 .detail-dot {
@@ -957,7 +957,7 @@ h1 {
 .detail-content > p {
   margin-bottom: 18px;
   color: var(--text2);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   line-height: 1.65;
 }
 
@@ -968,7 +968,7 @@ h1 {
 .detail-content dt {
   margin-top: 12px;
   color: var(--text3);
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -977,7 +977,7 @@ h1 {
 .detail-content dd {
   overflow-wrap: anywhere;
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 
 .detail-properties {
@@ -1001,7 +1001,7 @@ h1 {
 
 .property-heading > a {
   color: var(--text);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 700;
 }
 
@@ -1009,7 +1009,7 @@ h1 {
 .cardinality-pill {
   border-radius: 4px;
   padding: 1px 6px;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
 }
 
@@ -1040,7 +1040,7 @@ h1 {
   margin-top: 3px;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
 }
 
 .detail-empty {
@@ -1051,7 +1051,7 @@ h1 {
 .additional-count {
   margin: 9px 2px 0;
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   line-height: 1.45;
 }
 
@@ -1086,7 +1086,7 @@ h1 {
 .profile-card strong {
   display: block;
   margin: 5px 0 7px;
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
 }
 
 .profile-card p {
@@ -1094,7 +1094,7 @@ h1 {
   overflow: hidden;
   margin-bottom: 12px;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -1102,7 +1102,7 @@ h1 {
 
 .profile-type {
   color: var(--accent);
-  font-size: 9px;
+  font-size: calc(9px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1119,7 +1119,7 @@ h1 {
   padding: 11px 14px;
   background: var(--surface2);
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
 }
 
 .simple-mode-note button,
@@ -1130,7 +1130,7 @@ h1 {
   background: var(--surface);
   color: var(--accent);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   font-weight: 700;
   cursor: pointer;
 }
@@ -1163,13 +1163,13 @@ h1 {
   display: block;
   margin-bottom: 5px;
   color: var(--text2);
-  font-size: 14px;
+  font-size: calc(14px + var(--responsive-font-increase));
 }
 
 .unavailable-state p {
   max-width: 680px;
   color: var(--text3);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   line-height: 1.65;
 }
 
@@ -1182,7 +1182,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-family: inherit;
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 
 th,
@@ -1195,7 +1195,7 @@ td {
 
 th {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1215,13 +1215,13 @@ tbody tr:last-child td {
   margin-top: 3px;
   color: var(--text3);
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 
 .format-pill {
   border-radius: 5px;
   font-family: "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 
 .actions {
@@ -1236,7 +1236,7 @@ tbody tr:last-child td {
   padding: 9px 13px;
   background: var(--surface);
   color: var(--text);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
   font-weight: 700;
 }
 

@@ -380,7 +380,7 @@ function cleanText(value?: string | null): string {
   gap: 10px;
   padding: 10px 14px;
   background: var(--surface2);
-  font-size: 13px;
+  font-size: calc(13px + var(--responsive-font-increase));
 }
 
 .diagram-bar {
@@ -393,7 +393,7 @@ function cleanText(value?: string | null): string {
 
 .svg-status {
   color: var(--text3);
-  font-size: 10px;
+  font-size: calc(10px + var(--responsive-font-increase));
 }
 
 .svg-status.error {
@@ -497,7 +497,7 @@ function cleanText(value?: string | null): string {
   padding: 22px;
   background: var(--bg);
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   text-align: center;
 }
 
@@ -511,6 +511,6 @@ function cleanText(value?: string | null): string {
   justify-content: space-between;
   border-top: 1px solid var(--border);
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
 }
 </style>

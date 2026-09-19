@@ -1,4 +1,5 @@
 :root {
+  --responsive-font-increase: 0px;
   --bg: #f9f9ff;
   --bg2: #f1f3ff;
   --surface: #ffffff;
@@ -31,6 +32,18 @@
   font-family: "Jost", ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --responsive-font-increase: 1px;
+  }
+}
+
+@media (min-width: 2200px) {
+  :root {
+    --responsive-font-increase: 2px;
+  }
 }
 
 [data-theme="dark"] {
@@ -76,7 +89,7 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--text);
-  font-size: 16px;
+  font-size: calc(16px + var(--responsive-font-increase));
   line-height: 1.6;
   overflow-x: hidden;
 }
@@ -175,7 +188,7 @@ a:hover {
 
 .tb-logo-text {
   color: var(--text);
-  font-size: 16px;
+  font-size: calc(16px + var(--responsive-font-increase));
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -245,7 +258,7 @@ a:hover {
 .settings-title {
   margin-bottom: 10px;
   color: var(--text3);
-  font-size: 11px;
+  font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -266,7 +279,7 @@ a:hover {
   border: 1.5px solid var(--border);
   border-radius: 7px;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   cursor: pointer;
   user-select: none;
 }
@@ -301,7 +314,7 @@ a:hover {
   border-radius: 6px;
   padding: 5px 12px;
   color: var(--text2);
-  font-size: 12px;
+  font-size: calc(12px + var(--responsive-font-increase));
   text-decoration: none;
   transition: all 0.15s;
 }
