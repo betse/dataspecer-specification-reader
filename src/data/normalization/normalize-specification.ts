@@ -146,10 +146,13 @@ function normalizeArtifact(
   const role = readFirstString(resource, ["hasRole"]);
   const format = readFirstString(resource, ["format"]);
   const type = inferArtifactType(role, format, resolvedUrl);
+  const publishedTitle = readFirstLocalizedString(resource, ["title", "name", "label"]);
+  const description = readFirstLocalizedString(resource, ["description", "abstract"]);
 
   return {
     id: readFirstString(resource, ["@id", "id"]) ?? resolvedUrl,
-    title: localizedString(artifactTitle(type, role, format)),
+    title: publishedTitle ?? localizedString(artifactTitle(type, role, format, resolvedUrl)),
+    ...(description ? { description } : {}),
     type,
     mediaType: format,
     url: resolvedUrl,
@@ -256,8 +259,16 @@ function inferArtifactType(
     return "shacl";
   }
 
-  if (value.includes("json-schema")) {
+  if (
+    value.includes("json-schema") ||
+    value.includes("json_schema") ||
+    value.endsWith("schema.json")
+  ) {
     return "json-schema";
+  }
+
+  if (value.includes("json-ld") || value.includes("json_ld") || value.endsWith(".jsonld")) {
+    return "json-ld";
   }
 
   if (value.includes("xml-schema") || value.endsWith(".xsd")) {
@@ -282,7 +293,19 @@ function artifactTitle(
   type: SpecificationArtifact["type"],
   role: string | undefined,
   format: string | undefined,
+  url: string,
 ): string {
+  const fileName = artifactFileName(url);
+
+  if (fileName === "structure.ttl") return "Structural model description";
+  if (fileName === "generator-configuration.ttl") return "Generator configuration";
+  if (fileName === "context.jsonld") return "JSON-LD context";
+  if (fileName.includes(".ldes.")) return "Serialization of changes in LDES format";
+  if (fileName === "dsv.ttl") return "Application profile";
+  if (fileName === "model.owl.ttl") return "Vocabulary";
+  if (fileName === "shacl.ttl") return "SHACL constraints";
+  if (fileName === "schema.json") return "JSON Schema";
+
   const normalizedRole = role?.replace(/^role:/, "");
 
   if (normalizedRole === "specification") {
@@ -306,6 +329,14 @@ function artifactTitle(
   }
 
   return format ?? type;
+}
+
+function artifactFileName(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "").toLowerCase();
+  } catch {
+    return decodeURIComponent(url.split(/[/?#]/).filter(Boolean).pop() ?? "").toLowerCase();
+  }
 }
 
 /**

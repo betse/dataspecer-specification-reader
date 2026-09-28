@@ -32,6 +32,9 @@ type PositionedNode = { node: BrowserNode; x: number; y: number };
 const props = defineProps<{ browser: SpecificationBrowser }>();
 const router = useRouter();
 
+const GRAPH_NODE_WIDTH = 160;
+const GRAPH_LABEL_MAX_LENGTH = 20;
+
 const query = ref("");
 const scope = ref<Scope>("all");
 const selectedId = ref<string | null>(null);
@@ -120,7 +123,7 @@ function layoutGraph(): void {
     )
     .force("charge", forceManyBody().strength(-380))
     .force("center", forceCenter(500, 310))
-    .force("collision", forceCollide<GraphNode>(90).strength(1))
+    .force("collision", forceCollide<GraphNode>(GRAPH_NODE_WIDTH / 2 + 20).strength(1))
     .stop();
 
   simulation.tick(180);
@@ -183,6 +186,11 @@ function nodeClass(kind: SpecificationBrowserNodeKind): string {
   if (kind === "published-specification") return "published";
   if (kind === "external-resource") return "external";
   return "focal";
+}
+
+function graphNodeLabel(node: SpecificationBrowserNode): string {
+  if (node.graphLabel.length <= GRAPH_LABEL_MAX_LENGTH) return node.graphLabel;
+  return node.graphLabel.slice(0, GRAPH_LABEL_MAX_LENGTH - 1).trimEnd() + "…";
 }
 
 function targetLink(node: SpecificationBrowserNode): string {
@@ -363,13 +371,21 @@ function resetGraph(closeSelection = true): void {
               transform="translate(500 310)"
               role="button"
               tabindex="0"
+              :aria-label="focusNode.title"
               @click.stop="selectNode(focusNode)"
               @keydown.enter="selectNode(focusNode)"
             >
-              <rect x="-70" y="-22" width="140" height="44" rx="10" />
-              <text y="-5" text-anchor="middle">{{ focusNode.graphLabel }}</text>
+              <title>{{ focusNode.title }}</title>
+              <rect
+                :x="-GRAPH_NODE_WIDTH / 2"
+                y="-22"
+                :width="GRAPH_NODE_WIDTH"
+                height="44"
+                rx="10"
+              />
+              <text y="-5" text-anchor="middle">{{ graphNodeLabel(focusNode) }}</text>
               <text class="node-type" y="10" text-anchor="middle">{{ focusNode.kindLabel }}</text>
-              <text class="focal-star" x="42" y="-11">★</text>
+              <text class="focal-star" :x="GRAPH_NODE_WIDTH / 2 - 28" y="-11">★</text>
             </g>
 
             <g
@@ -380,11 +396,19 @@ function resetGraph(closeSelection = true): void {
               :transform="`translate(${position.x} ${position.y})`"
               role="button"
               tabindex="0"
+              :aria-label="position.node.title"
               @click.stop="selectNode(position.node)"
               @keydown.enter="selectNode(position.node)"
             >
-              <rect x="-70" y="-22" width="140" height="44" rx="10" />
-              <text y="-5" text-anchor="middle">{{ position.node.graphLabel }}</text>
+              <title>{{ position.node.title }}</title>
+              <rect
+                :x="-GRAPH_NODE_WIDTH / 2"
+                y="-22"
+                :width="GRAPH_NODE_WIDTH"
+                height="44"
+                rx="10"
+              />
+              <text y="-5" text-anchor="middle">{{ graphNodeLabel(position.node) }}</text>
               <text class="node-type" y="10" text-anchor="middle">
                 {{ position.node.kindLabel }}
               </text>

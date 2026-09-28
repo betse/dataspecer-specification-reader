@@ -170,6 +170,7 @@ function artifactFormatLabel(artifact: SpecificationArtifact): string {
     return "TTL";
   }
   if (artifact.type === "json-schema") return "JSON";
+  if (artifact.type === "json-ld") return "JSON-LD";
   if (artifact.type === "xml-schema") return "XSD";
   return artifact.type.toUpperCase();
 }

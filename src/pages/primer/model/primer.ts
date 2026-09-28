@@ -401,7 +401,7 @@ function createResource(artifact: SpecificationArtifact): PrimerResource {
   return {
     id: artifact.id,
     title: selectLocalizedString(artifact.title) ?? resourceTypeLabel(artifact.type),
-    description: resourceDescription(artifact.type),
+    description: selectLocalizedString(artifact.description) ?? resourceDescription(artifact),
     type: artifact.type,
     formatLabel: artifactFormatLabel(artifact),
     mediaType: artifact.mediaType,
@@ -416,22 +416,52 @@ function artifactFormatLabel(artifact: SpecificationArtifact): string {
     return "TTL";
   }
   if (artifact.type === "json-schema") return "JSON Schema";
+  if (artifact.type === "json-ld") return "JSON-LD";
   if (artifact.type === "xml-schema") return "XSD";
   return artifact.type.toUpperCase();
 }
 
-function resourceDescription(type: ArtifactType): string {
+function resourceDescription(artifact: SpecificationArtifact): string {
+  const fileName = artifactFileName(artifact.url);
+
+  if (fileName === "structure.ttl") {
+    return "Structural model of the specification published in RDF/Turtle.";
+  }
+  if (fileName === "generator-configuration.ttl") {
+    return "Configuration used to generate specification outputs.";
+  }
+  if (fileName === "context.jsonld") {
+    return "JSON-LD context mapping terms to identifiers.";
+  }
+  if (fileName.includes(".ldes.")) {
+    return "Specification changes serialized as an LDES stream.";
+  }
+  if (fileName === "dsv.ttl") {
+    return "Application profile expressed using DSV in RDF/Turtle.";
+  }
+  if (fileName === "schema.json") {
+    return "JSON Schema representation of the specification.";
+  }
   const descriptions: Record<ArtifactType, string> = {
     html: "Human-readable specification document.",
     rdf: "Semantic RDF representation of the specification.",
     svg: "Visual diagram published with the specification.",
     shacl: "SHACL validation constraints.",
     "json-schema": "JSON Schema representation.",
+    "json-ld": "JSON-LD resource published with the specification.",
     "xml-schema": "XML Schema representation.",
     other: "Additional resource published with the specification.",
   };
 
-  return descriptions[type];
+  return descriptions[artifact.type];
+}
+
+function artifactFileName(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "").toLowerCase();
+  } catch {
+    return decodeURIComponent(url.split(/[/?#]/).filter(Boolean).pop() ?? "").toLowerCase();
+  }
 }
 
 function resourceTypeLabel(type: ArtifactType): string {

@@ -2,7 +2,7 @@ import type { LocalizedString } from "./localized-string";
 
 /** Broad category of a generated specification resource. */
 export type ArtifactType =
-  "html" | "rdf" | "svg" | "shacl" | "json-schema" | "xml-schema" | "other";
+  "html" | "rdf" | "svg" | "shacl" | "json-schema" | "json-ld" | "xml-schema" | "other";
 
 /**
  * Generated or linked resource belonging to a specification.
@@ -16,6 +16,9 @@ export interface SpecificationArtifact {
 
   /** Human-readable label derived from the resource role, format, or type. */
   title: LocalizedString;
+
+  /** Human-readable description published for the resource, when available. */
+  description?: LocalizedString;
 
   /** Reader-friendly artifact category inferred from role, format, or file extension. */
   type: ArtifactType;

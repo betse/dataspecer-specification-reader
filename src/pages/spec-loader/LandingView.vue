@@ -11,6 +11,7 @@ const route = useRoute();
 const state = useSpecificationState();
 const sourceUrl = ref("");
 const detailMode = ref<DetailMode>(state.detailMode);
+const loadingDefaultId = ref<string>();
 
 onMounted(() => {
   const requestedUrl = route.query.specificationUrl;
@@ -46,9 +47,16 @@ function normalizeUrl(value: string): string {
   return markdownLink?.[1] ?? value.trim();
 }
 
-function selectDefaultSpecification(specification: DefaultSpecification) {
+async function selectDefaultSpecification(specification: DefaultSpecification) {
   sourceUrl.value = specification.url;
   state.setError(null);
+  loadingDefaultId.value = specification.id;
+
+  try {
+    await openSpecification();
+  } finally {
+    loadingDefaultId.value = undefined;
+  }
 }
 </script>
 
@@ -118,7 +126,7 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
     <header class="specs-header">
       <div>
         <h2 id="preloaded-specifications-title" class="specs-title">Preloaded specifications</h2>
-        <p class="specs-sub">Select a specification, then open it using the URL field above.</p>
+        <p class="specs-sub">Select a specification to load and open it immediately.</p>
       </div>
       <div class="specs-count">{{ defaultSpecifications.length }} specifications</div>
     </header>
@@ -131,12 +139,16 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
         :class="{ active: sourceUrl === specification.url }"
         :style="{ '--card-accent': specification.accent }"
         type="button"
+        :disabled="state.isLoading"
+        :aria-busy="loadingDefaultId === specification.id"
         @click="selectDefaultSpecification(specification)"
       >
         <span class="card-header">
           <span class="card-icon">{{ specification.icon }}</span>
           <span class="card-title-group">
-            <strong class="card-title">{{ specification.title }}</strong>
+            <strong class="card-title">
+              {{ loadingDefaultId === specification.id ? "Loading…" : specification.title }}
+            </strong>
             <span class="card-subtitle">{{ specification.subtitle }}</span>
           </span>
         </span>
@@ -493,6 +505,11 @@ function selectDefaultSpecification(specification: DefaultSpecification) {
 
 .spec-card.active {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--card-accent) 15%, transparent);
+}
+
+.spec-card:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .spec-card:hover::before,
