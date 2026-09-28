@@ -1,6 +1,39 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { normalizeSpecification } from "./normalize-specification";
+
+const dsvDapFixtureUrl = new URL("../testing/fixtures/dsv-dap.jsonld", import.meta.url);
+
+test("normalizes real DSV-DAP publication metadata", async () => {
+  const fixture = JSON.parse(await readFile(dsvDapFixtureUrl, "utf8"));
+  const sourceUrl = "https://mff-uk.github.io/data-specification-vocabulary/dsv-dap/";
+
+  const result = normalizeSpecification(fixture, { sourceUrl });
+
+  assert.equal(result.metadata.id, "https://w3id.org/dsv-dap#");
+  assert.equal(
+    result.metadata.title.en,
+    "Data Specification Vocabulary - Default Application Profile (DSV-DAP)",
+  );
+  assert.deepEqual(result.metadata.types, ["dsv:ApplicationProfile", "prof:Profile"]);
+
+  const artifactByFile = new Map(
+    result.artifacts.map((artifact) => [artifact.url.split("/").pop(), artifact]),
+  );
+  assert.equal(artifactByFile.get("structure.ttl")?.title.und, "Structural model description");
+  assert.equal(
+    artifactByFile.get("generator-configuration.ttl")?.title.und,
+    "Generator configuration",
+  );
+  assert.equal(artifactByFile.get("schema.json")?.type, "json-schema");
+  assert.equal(artifactByFile.get("context.jsonld")?.type, "json-ld");
+
+  assert.deepEqual(
+    result.relatedSpecifications.map((relation) => relation.kind),
+    ["external-resource", "published-specification"],
+  );
+});
 
 test("normalizes a Dataspecer application profile JSON-LD document", () => {
   const result = normalizeSpecification(
@@ -88,6 +121,8 @@ test("normalizes a Dataspecer application profile JSON-LD document", () => {
       title: { und: "DCAT" },
       relation: "isProfileOf",
       targetIri: "https://www.w3.org/ns/dcat",
+      targetUrl: undefined,
+      kind: "external-resource",
       label: undefined,
     },
   ]);
@@ -153,15 +188,66 @@ test("normalizes a Dataspecer vocabulary JSON-LD document", () => {
     result.artifacts.map((artifact) => artifact.type),
     ["rdf", "svg", "html"],
   );
+  assert.equal(result.artifacts[0]?.title.und, "Vocabulary");
   assert.deepEqual(result.relatedSpecifications, [
     {
       id: "https://www.w3.org/TR/dx-prof/rdf/prof.ttl",
       title: { en: "prof" },
       relation: "isProfileOf",
       targetIri: "https://www.w3.org/TR/dx-prof/rdf/prof.ttl",
+      targetUrl: "https://www.w3.org/TR/dx-prof/rdf/prof.ttl",
+      kind: "external-resource",
       label: undefined,
     },
   ]);
+});
+
+test("distinguishes published specifications from external relation resources", () => {
+  const result = normalizeSpecification({
+    "@id": "https://example.com/profile/",
+    "@type": "dsv:ApplicationProfileSpecificationDocument",
+    hasRole: "role:specification",
+    hasArtifact: "https://example.com/profile/",
+    inSpecificationOf: {
+      "@id": "https://example.com/profile#",
+      title: "Example profile",
+      isProfileOf: [
+        {
+          "@id": "https://example.com/base#",
+          title: "Published base profile",
+          hasResource: {
+            hasArtifact: "https://example.com/base/",
+          },
+        },
+        {
+          title: "External vocabulary",
+          hasResource: {
+            hasArtifact: "https://example.com/vocabulary.ttl",
+          },
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    result.relatedSpecifications.map(({ targetIri, targetUrl, kind }) => ({
+      targetIri,
+      targetUrl,
+      kind,
+    })),
+    [
+      {
+        targetIri: "https://example.com/base#",
+        targetUrl: "https://example.com/base/",
+        kind: "published-specification",
+      },
+      {
+        targetIri: "https://example.com/vocabulary.ttl",
+        targetUrl: "https://example.com/vocabulary.ttl",
+        kind: "external-resource",
+      },
+    ],
+  );
 });
 
 test("throws when JSON-LD does not provide a specification title", () => {
