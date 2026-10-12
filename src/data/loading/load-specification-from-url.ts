@@ -1,3 +1,4 @@
+import { publicationLanguage } from "./publication-language";
 import type { Specification } from "../model/specification";
 import { normalizeSpecification } from "../normalization/normalize-specification";
 
@@ -9,16 +10,22 @@ import { normalizeSpecification } from "../normalization/normalize-specification
  * Dataspecer. The page should contain at least one
  * `<script type="application/ld+json">` block.
  */
-export async function loadSpecificationFromUrl(url: string): Promise<Specification> {
-  const html = await fetchHtmlDocument(url);
+export async function loadSpecificationFromUrl(
+  url: string,
+  options: { fetch?: typeof fetch } = {},
+): Promise<Specification> {
+  const html = await fetchHtmlDocument(url, options.fetch ?? fetch);
   const jsonLdArray = extractJsonLd(html);
 
-  return normalizeSpecification(jsonLdArray, { sourceUrl: url });
+  return normalizeSpecification(jsonLdArray, {
+    sourceUrl: url,
+    language: publicationLanguage(html, url),
+  });
 }
 
 /** Fetches the raw HTML document and reports HTTP failures as loader errors. */
-async function fetchHtmlDocument(url: string): Promise<string> {
-  const response = await fetch(url);
+async function fetchHtmlDocument(url: string, fetchDocument: typeof fetch): Promise<string> {
+  const response = await fetchDocument(url);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch HTML document from ${url}: ${response.status}`);

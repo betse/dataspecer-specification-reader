@@ -99,3 +99,46 @@ test("creates compact graph labels without replacing full titles", () => {
     ],
   );
 });
+
+test("uses only declared related-target types and preserves them through normalization", () => {
+  const targets = [
+    { "@id": "https://example.org/vocabulary", "@type": ["owl:Ontology", "prof:Profile"] },
+    { "@id": "https://example.org/profile", "@type": "dsv:ApplicationProfile" },
+    {
+      "@id": "https://example.org/mixed",
+      "@type": [
+        "http://www.w3.org/2002/07/owl#Ontology",
+        "https://w3id.org/dsv#ApplicationProfile",
+      ],
+    },
+    { "@id": "https://example.org/application-profile-name-only" },
+    { "@id": "https://example.org/generic", "@type": "prof:Profile" },
+  ];
+  const specification = normalizeSpecification({
+    "@id": dsvDapSourceUrl,
+    "@type": "dsv:ApplicationProfileSpecificationDocument",
+    inSpecificationOf: {
+      "@id": dsvDapSourceUrl + "#",
+      "@type": ["owl:Ontology", "dsv:ApplicationProfile"],
+      title: { en: "Test specification" },
+      isProfileOf: targets.map((target) => ({
+        ...target,
+        hasResource: { hasArtifact: target["@id"] + "/" },
+      })),
+    },
+  });
+  assert.deepEqual(specification.relatedSpecifications[0]?.types, ["owl:Ontology", "prof:Profile"]);
+  assert.equal(specification.relatedSpecifications[3]?.types, undefined);
+  const browser = createSpecificationBrowser(specification);
+  assert.deepEqual(
+    browser.nodes.map((node) => node.kindLabel),
+    [
+      "Vocabulary & application profile",
+      "Vocabulary",
+      "Application profile",
+      "Vocabulary & application profile",
+      "Dataspecer specification",
+      "Dataspecer specification",
+    ],
+  );
+});

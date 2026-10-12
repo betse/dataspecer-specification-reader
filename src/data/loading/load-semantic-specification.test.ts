@@ -113,3 +113,25 @@ function mockSuccessfulFetch(expectedUrl: string, content: string): typeof fetch
     return new Response(content, { status: 200 });
   }) as typeof fetch;
 }
+
+test("excludes LDES artifacts from semantic loading but preserves downloadable resources", async () => {
+  const rdf = await readFile(applicationProfileFixtureUrl, "utf8");
+  const urls = [
+    "https://ofn.gov.cz/spec/dsv.ldes.ttl",
+    "https://ofn.gov.cz/spec/DSV.LDES.TTL?download=1#stream",
+    "https://ofn.gov.cz/spec/dsv%2Eldes%2Ettl",
+  ];
+  const specification = createSpecification([
+    rdfArtifact("current", "Application profile", dsvApplicationProfileUrl),
+    ...urls.map((url) => rdfArtifact(url, "Change stream", url)),
+  ]);
+  const result = await loadSemanticSpecification(specification, {
+    fetch: mockSuccessfulFetch(dsvApplicationProfileUrl, rdf),
+  });
+  assert.equal(result.applicationProfiles[0]?.classProfiles.length, 25);
+  assert.deepEqual(
+    result.sources.map((source) => source.url),
+    [dsvApplicationProfileUrl],
+  );
+  assert.equal(specification.artifacts.length, 4);
+});

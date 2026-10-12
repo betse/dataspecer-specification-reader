@@ -1,13 +1,46 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, useTemplateRef } from "vue";
-import { RouterLink, RouterView } from "vue-router";
+import { onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import { RouterLink, RouterView, useRoute } from "vue-router";
 import type { DetailMode } from "../state/specification-state";
 import { useSpecificationState } from "../state/specification-state";
 import { routes } from "./router";
 
+import { loadSpecificationFromUrl } from "../data/loading/load-specification-from-url";
+
 type Theme = "light" | "dark";
 
 const state = useSpecificationState();
+const route = useRoute();
+const restoring = ref(false);
+const restoreError = ref<string>();
+const retryCount = ref(0);
+
+// Restore metadata on any reader page, including direct links and browser history.
+watch(
+  () => [route.path, route.query.specificationUrl, retryCount.value] as const,
+  async ([path, source], _previous, onCleanup) => {
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
+    restoring.value = false;
+    restoreError.value = undefined;
+    if (path === routes.landing || typeof source !== "string" || !source.trim()) return;
+    if (state.specification?.metadata.sourceUrl === source) return;
+    restoring.value = true;
+    try {
+      const specification = await loadSpecificationFromUrl(source);
+      if (!cancelled) state.setSpecification(specification);
+    } catch (error) {
+      if (!cancelled)
+        restoreError.value =
+          error instanceof Error ? error.message : "Unable to load specification.";
+    } finally {
+      if (!cancelled) restoring.value = false;
+    }
+  },
+  { immediate: true },
+);
 const settingsOpen = ref(false);
 const theme = ref<Theme>("light");
 const settingsWrap = useTemplateRef("settingsWrap");
@@ -88,7 +121,7 @@ function closeSettingsOutside(event: unknown) {
             </svg>
           </button>
           <div v-if="settingsOpen" class="settings-panel">
-            <div class="settings-title">Default mode</div>
+            <div class="settings-title">Display mode</div>
             <div class="mode-options">
               <label class="mode-radio" :class="{ selected: state.detailMode === 'simple' }">
                 <input
@@ -144,7 +177,26 @@ function closeSettingsOutside(event: unknown) {
     </header>
 
     <main class="app-main" :class="`app-main--${String($route.name)}`">
-      <RouterView />
+      <section v-if="restoring" role="status" class="route-status">
+        <h1>Loading specification…</h1>
+      </section>
+      <section v-else-if="restoreError" role="alert" class="route-status">
+        <h1>Unable to load specification</h1>
+        <p>{{ restoreError }}</p>
+        <button type="button" @click="retryCount++">Retry</button>
+        <RouterLink :to="routes.landing">Choose another specification</RouterLink>
+      </section>
+      <RouterView v-else />
     </main>
   </div>
 </template>
+
+<style scoped>
+.route-status {
+  padding: 2rem;
+  color: var(--text);
+}
+.route-status button {
+  margin-right: 1rem;
+}
+</style>

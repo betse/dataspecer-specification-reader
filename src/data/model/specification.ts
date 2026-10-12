@@ -22,6 +22,9 @@ export interface SpecificationMetadata {
    */
   sourceUrl?: string;
 
+  /** Preferred content language declared by the publication page. */
+  language?: string;
+
   /** The canonical IRI of this specification.
    * sourced from @id in JSON-LD.
    * Example: "https://mff-uk.github.io/specifications/dcat-ap#"

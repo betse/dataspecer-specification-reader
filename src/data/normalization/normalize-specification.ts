@@ -5,6 +5,7 @@ import type { Specification, SpecificationMetadata } from "../model/specificatio
 
 interface NormalizeSpecificationOptions {
   sourceUrl?: string;
+  language?: string;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -98,6 +99,7 @@ function normalizeMetadata(
   return {
     id,
     sourceUrl: options.sourceUrl,
+    ...(options.language ? { language: options.language } : {}),
     iri: readFirstString(source, ["@id", "iri", "url"]),
     title,
     description: readFirstLocalizedString(source, ["description", "abstract"]),
@@ -203,6 +205,7 @@ function normalizeRelatedSpecifications(
       targetUrl,
       kind: canonicalTargetIri && targetUrl ? "published-specification" : "external-resource",
       label: readFirstLocalizedString(item, ["label"]),
+      ...(item["@type"] !== undefined ? { types: readStringList(item["@type"]) } : {}),
     });
   }
 

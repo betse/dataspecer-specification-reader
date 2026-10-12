@@ -42,4 +42,7 @@ export interface RelatedSpecification {
 
   /** Optional shorter label when the JSON-LD provides one separately from title. */
   label?: LocalizedString;
+
+  /** Explicit target RDF types supplied by the loaded metadata, if available. */
+  types?: string[];
 }

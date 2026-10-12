@@ -265,7 +265,7 @@ function resetGraph(closeSelection = true): void {
             @click="setScope('published-specification')"
           >
             <span class="rf-dot published"></span>
-            <span>Published specifications</span>
+            <span>Dataspecer specifications</span>
             <span class="rf-count">{{ publishedCount }}</span>
             <span class="rf-check"
               ><svg viewBox="0 0 9 7"><polyline points="1,3.5 3.5,6 8,1" /></svg
@@ -309,9 +309,9 @@ function resetGraph(closeSelection = true): void {
     <div class="graph-area">
       <div class="graph-toolbar">
         <div class="graph-legend">
-          <span class="gl-item"><i class="gl-dot focal"></i>{{ focusNode.kindLabel }}</span>
-          <span class="gl-item"><i class="gl-dot published"></i>Published Spec</span>
-          <span class="gl-item"><i class="gl-dot external"></i>External</span>
+          <span class="gl-item"><i class="gl-dot focal"></i>Current specification</span>
+          <span class="gl-item"><i class="gl-dot published"></i>Dataspecer specifications</span>
+          <span class="gl-item"><i class="gl-dot external"></i>External resources</span>
         </div>
         <span class="graph-hint">Drag · scroll to zoom · click node to inspect</span>
         <div class="graph-controls">
@@ -375,16 +375,25 @@ function resetGraph(closeSelection = true): void {
               @click.stop="selectNode(focusNode)"
               @keydown.enter="selectNode(focusNode)"
             >
-              <title>{{ focusNode.title }}</title>
+              <title>{{ focusNode.title }} — {{ focusNode.kindLabel }}</title>
               <rect
                 :x="-GRAPH_NODE_WIDTH / 2"
                 y="-22"
                 :width="GRAPH_NODE_WIDTH"
-                height="44"
+                :height="focusNode.kindLabel.includes(' & ') ? 56 : 44"
                 rx="10"
               />
               <text y="-5" text-anchor="middle">{{ graphNodeLabel(focusNode) }}</text>
-              <text class="node-type" y="10" text-anchor="middle">{{ focusNode.kindLabel }}</text>
+              <text class="node-type" y="10" text-anchor="middle">
+                <tspan
+                  v-for="(line, index) in focusNode.kindLabel.split(' & ')"
+                  :key="index"
+                  x="0"
+                  :dy="index ? 12 : 0"
+                >
+                  {{ index ? "& " + line : line }}
+                </tspan>
+              </text>
               <text class="focal-star" :x="GRAPH_NODE_WIDTH / 2 - 28" y="-11">★</text>
             </g>
 
@@ -400,17 +409,24 @@ function resetGraph(closeSelection = true): void {
               @click.stop="selectNode(position.node)"
               @keydown.enter="selectNode(position.node)"
             >
-              <title>{{ position.node.title }}</title>
+              <title>{{ position.node.title }} — {{ position.node.kindLabel }}</title>
               <rect
                 :x="-GRAPH_NODE_WIDTH / 2"
                 y="-22"
                 :width="GRAPH_NODE_WIDTH"
-                height="44"
+                :height="position.node.kindLabel.includes(' & ') ? 56 : 44"
                 rx="10"
               />
               <text y="-5" text-anchor="middle">{{ graphNodeLabel(position.node) }}</text>
               <text class="node-type" y="10" text-anchor="middle">
-                {{ position.node.kindLabel }}
+                <tspan
+                  v-for="(line, index) in position.node.kindLabel.split(' & ')"
+                  :key="index"
+                  x="0"
+                  :dy="index ? 12 : 0"
+                >
+                  {{ index ? "& " + line : line }}
+                </tspan>
               </text>
             </g>
           </g>

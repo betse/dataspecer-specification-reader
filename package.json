@@ -11,14 +11,15 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "test:language": "node --import tsx --test src/data/testing/content-language.test.ts",
     "test:normalize": "node --import tsx --test src/data/normalization/normalize-specification.test.ts",
     "test:loading": "node --import tsx --test src/data/loading/load-specification-from-url.test.ts",
-    "test:semantic": "node --import tsx --test src/data/loading/load-semantic-specification.test.ts",
+    "test:semantic": "node --import tsx --test src/data/loading/load-semantic-specification.test.ts src/data/loading/resolve-internal-reuse.test.ts src/data/loading/local-class-labels.test.ts",
     "test:parsers": "node --import tsx --test src/data/semantic/vocabulary/parse-vocabulary.test.ts src/data/semantic/application-profile/parse-application-profile.test.ts",
     "test:explorer-model": "node --import tsx --test src/pages/spec-explorer/model/specification-explorer.test.ts",
-    "test:primer-model": "node --import tsx --test src/pages/primer/model/primer.test.ts",
+    "test:primer-model": "node --import tsx --test src/pages/primer/model/primer.test.ts src/pages/primer/model/match-diagram-term.test.ts",
     "test:s2s-models": "node --import tsx --test src/pages/spec-to-spec/model/specification-overview.test.ts src/pages/spec-to-spec/model/specification-browser.test.ts",
-    "test:data": "node --import tsx --test src/data/loading/load-specification-from-url.test.ts src/data/loading/load-semantic-specification.test.ts src/data/normalization/normalize-specification.test.ts src/data/semantic/vocabulary/parse-vocabulary.test.ts src/data/semantic/application-profile/parse-application-profile.test.ts",
+    "test:data": "node --import tsx --test src/data/loading/load-specification-from-url.test.ts src/data/loading/load-semantic-specification.test.ts src/data/loading/resolve-internal-reuse.test.ts src/data/loading/local-class-labels.test.ts src/data/normalization/normalize-specification.test.ts src/data/semantic/vocabulary/parse-vocabulary.test.ts src/data/semantic/application-profile/parse-application-profile.test.ts",
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {

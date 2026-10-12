@@ -1,4 +1,8 @@
-import { selectLocalizedString } from "../../../data/model/localized-string";
+import { specificationTypeLabel } from "./specification-type-label";
+import {
+  selectLocalizedString,
+  preferredContentLanguages,
+} from "../../../data/model/localized-string";
 import type { RelatedSpecificationKind } from "../../../data/model/specification-relation";
 import type { Specification } from "../../../data/model/specification";
 
@@ -134,6 +138,7 @@ function truncateTitle(title: string, maximumLength: number): string {
 
 /** Creates the display-ready node and edge model consumed by the S2S browser. */
 export function createSpecificationBrowser(specification: Specification): SpecificationBrowser {
+  const preferredLanguages = preferredContentLanguages(specification.metadata.language);
   const focalNodeId = specification.metadata.id;
   const internalSpecifications = specification.relatedSpecifications.filter(
     (relation) => relation.kind === "published-specification",
@@ -143,16 +148,18 @@ export function createSpecificationBrowser(specification: Specification): Specif
   ).length;
   const focalNode: SpecificationBrowserNode = {
     id: focalNodeId,
-    title: selectLocalizedString(specification.metadata.title) ?? "Untitled specification",
+    title:
+      selectLocalizedString(specification.metadata.title, preferredLanguages) ??
+      "Untitled specification",
     graphLabel: createGraphLabel(
-      selectLocalizedString(specification.metadata.title),
+      selectLocalizedString(specification.metadata.title, preferredLanguages),
       specification.metadata.iri ?? focalNodeId,
     ),
     kind: "focal",
-    kindLabel: specificationTypeLabel(specification.metadata.types),
+    kindLabel: specificationTypeLabel(specification.metadata.types) ?? "Dataspecer specification",
     iri: specification.metadata.iri ?? focalNodeId,
     resourceUrl: specification.metadata.sourceUrl,
-    description: selectLocalizedString(specification.metadata.description),
+    description: selectLocalizedString(specification.metadata.description, preferredLanguages),
     statistics: {
       internalSpecifications,
       externalSpecifications,
@@ -160,7 +167,7 @@ export function createSpecificationBrowser(specification: Specification): Specif
     },
     artifacts: specification.artifacts.map((artifact) => ({
       id: artifact.id,
-      title: selectLocalizedString(artifact.title) ?? artifact.url,
+      title: selectLocalizedString(artifact.title, preferredLanguages) ?? artifact.url,
       type: artifact.type,
       mediaType: artifact.mediaType,
       url: artifact.url,
@@ -169,7 +176,7 @@ export function createSpecificationBrowser(specification: Specification): Specif
 
   const relatedNodes: SpecificationBrowserNode[] = specification.relatedSpecifications.map(
     (relation) => {
-      const title = selectLocalizedString(relation.title);
+      const title = selectLocalizedString(relation.title, preferredLanguages);
 
       return {
         id: relation.id,
@@ -177,10 +184,13 @@ export function createSpecificationBrowser(specification: Specification): Specif
         graphLabel: createGraphLabel(
           title,
           relation.targetIri,
-          selectLocalizedString(relation.label),
+          selectLocalizedString(relation.label, preferredLanguages),
         ),
         kind: relation.kind,
-        kindLabel: relation.kind === "published-specification" ? "Published Spec" : "External",
+        kindLabel:
+          relation.kind === "published-specification"
+            ? (specificationTypeLabel(relation.types ?? []) ?? "Dataspecer specification")
+            : "External resource",
         iri: relation.targetIri,
         resourceUrl: relation.targetUrl,
         artifacts: [],
@@ -206,14 +216,6 @@ export function createSpecificationBrowser(specification: Specification): Specif
       external: externalSpecifications,
     },
   };
-}
-
-function specificationTypeLabel(types: string[]): string {
-  if (types.some((type) => type.includes("ApplicationProfile"))) return "App Profile";
-  if (types.some((type) => type.includes("Vocabulary") || type.includes("Ontology"))) {
-    return "Vocabulary";
-  }
-  return "Specification";
 }
 
 function relationLabel(relation: string): string {

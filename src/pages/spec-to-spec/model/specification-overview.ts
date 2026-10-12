@@ -1,5 +1,9 @@
+import { specificationTypeLabel } from "./specification-type-label";
 import type { ArtifactType, SpecificationArtifact } from "../../../data/model/artifact";
-import { selectLocalizedString } from "../../../data/model/localized-string";
+import {
+  selectLocalizedString,
+  preferredContentLanguages,
+} from "../../../data/model/localized-string";
 import type {
   RelatedSpecification,
   RelatedSpecificationKind,
@@ -52,28 +56,24 @@ export interface SpecificationOverviewRelation {
 
 /** Creates the display-ready model consumed by the S2S overview. */
 export function createSpecificationOverview(specification: Specification): SpecificationOverview {
+  const preferredLanguages = preferredContentLanguages(specification.metadata.language);
   const metadata = specification.metadata;
   const sourceUrl = metadata.sourceUrl ?? metadata.iri;
+  const typeLabels = [specificationTypeLabel(metadata.types) ?? "Unknown"];
 
   return {
     id: metadata.id,
-    title: selectLocalizedString(metadata.title) ?? "Untitled specification",
+    title: selectLocalizedString(metadata.title, preferredLanguages) ?? "Untitled specification",
     description:
-      selectLocalizedString(metadata.description) ??
+      selectLocalizedString(metadata.description, preferredLanguages) ??
       "No description was provided by the specification metadata.",
-    typeLabels: metadata.types.map(resourceTypeLabel),
+    typeLabels,
     metadata: [
       metadata.iri ? { label: "IRI", value: metadata.iri, mono: true } : undefined,
       metadata.version ? { label: "Version", value: metadata.version } : undefined,
-      localizedRow("Publisher", metadata.publisher),
+      localizedRow("Publisher", metadata.publisher, preferredLanguages),
       metadata.license ? { label: "License", value: metadata.license } : undefined,
-      metadata.types.length
-        ? {
-            label: "Resource Type",
-            value: metadata.types.map(resourceTypeLabel).join(", "),
-            mono: true,
-          }
-        : undefined,
+      { label: "Resource Type", value: typeLabels.join(" & ") },
       sourceUrl ? { label: "Source", value: sourceUrl, href: sourceUrl } : undefined,
     ].filter((row): row is SpecificationOverviewMetadataRow => row !== undefined),
     statistics: {
@@ -85,10 +85,12 @@ export function createSpecificationOverview(specification: Specification): Speci
       ).length,
       artifacts: specification.artifacts.length,
     },
-    artifacts: specification.artifacts.map(createOverviewArtifact),
+    artifacts: specification.artifacts.map((value) =>
+      createOverviewArtifact(value, preferredLanguages),
+    ),
     relatedSpecifications: specification.relatedSpecifications.map((relation) => ({
       id: relation.id,
-      title: relatedSpecificationTitle(relation),
+      title: relatedSpecificationTitle(relation, preferredLanguages),
       relation: relation.relation,
       relationLabel: specificationRelationLabel(relation.relation),
       kind: relation.kind,
@@ -98,9 +100,12 @@ export function createSpecificationOverview(specification: Specification): Speci
   };
 }
 
-function relatedSpecificationTitle(relation: RelatedSpecification): string {
-  const title = selectLocalizedString(relation.title);
-  const label = selectLocalizedString(relation.label);
+function relatedSpecificationTitle(
+  relation: RelatedSpecification,
+  preferredLanguages: string[],
+): string {
+  const title = selectLocalizedString(relation.title, preferredLanguages);
+  const label = selectLocalizedString(relation.label, preferredLanguages);
 
   if (title && title !== relation.targetIri && !isUrl(title)) {
     return title;
@@ -144,17 +149,21 @@ function titleFromIri(iri: string): string | undefined {
 function localizedRow(
   label: string,
   value: Parameters<typeof selectLocalizedString>[0],
+  preferredLanguages: string[],
 ): SpecificationOverviewMetadataRow | undefined {
-  const selected = selectLocalizedString(value);
+  const selected = selectLocalizedString(value, preferredLanguages);
   return selected ? { label, value: selected } : undefined;
 }
 
-function createOverviewArtifact(artifact: SpecificationArtifact): SpecificationOverviewArtifact {
+function createOverviewArtifact(
+  artifact: SpecificationArtifact,
+  preferredLanguages: string[],
+): SpecificationOverviewArtifact {
   const formatLabel = artifactFormatLabel(artifact);
 
   return {
     id: artifact.id,
-    title: selectLocalizedString(artifact.title) ?? artifact.url,
+    title: selectLocalizedString(artifact.title, preferredLanguages) ?? artifact.url,
     type: artifact.type,
     formatLabel,
     formatClass: artifactFormatClass(artifact.type, formatLabel),
@@ -179,10 +188,6 @@ function artifactFormatClass(type: ArtifactType, formatLabel: string): string {
   const normalizedLabel = formatLabel.toLowerCase();
   if (["ttl", "json", "xsd"].includes(normalizedLabel)) return normalizedLabel;
   return type;
-}
-
-function resourceTypeLabel(type: string): string {
-  return type.replace(/^[^:]+:/, "").replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 function specificationRelationLabel(relation: string): string {

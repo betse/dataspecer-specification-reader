@@ -4,6 +4,9 @@ import { rdfToDsv } from "../semantic/application-profile/parse-application-prof
 import type { SemanticSource, SemanticSpecification } from "../semantic/semantic-specification";
 import { parseVocabulary } from "../semantic/vocabulary/parse-vocabulary";
 
+import { loadSpecificationFromUrl } from "./load-specification-from-url";
+import { resolveReusedValues } from "../semantic/resolve-reused-values";
+
 export interface LoadSemanticSpecificationOptions {
   fetch?: typeof fetch;
 }
@@ -23,23 +26,90 @@ export async function loadSemanticSpecification(
   specification: Specification,
   options: LoadSemanticSpecificationOptions = {},
 ): Promise<SemanticSpecification> {
-  const fetchDocument = options.fetch ?? fetch;
-  const rdfArtifacts = specification.artifacts.filter((artifact) => artifact.type === "rdf");
+  const underlyingFetch = options.fetch ?? fetch;
+  // Per-load caching avoids repeated requests without retaining failures across retries.
+  const cache = new Map<string, Promise<Response>>();
+  const fetchDocument: typeof fetch = async (input, init) => {
+    const key = String(input);
+    if (!cache.has(key)) cache.set(key, underlyingFetch(input, init));
+    return (await cache.get(key)!).clone();
+  };
+  const documents = new Map<string, string>();
+  const rdfArtifacts = specification.artifacts.filter(isCurrentSemanticArtifact);
   const artifactData = await Promise.all(
-    rdfArtifacts.map((artifact) => loadArtifactData(artifact, fetchDocument)),
+    rdfArtifacts.map((artifact) => loadArtifactData(artifact, fetchDocument, documents)),
   );
 
-  return {
+  const result: SemanticSpecification = {
     vocabularies: artifactData.flatMap((data) => (data.vocabulary ? [data.vocabulary] : [])),
     applicationProfiles: artifactData.flatMap((data) => data.applicationProfiles),
     sources: artifactData.map((data) => data.source),
     warnings: artifactData.flatMap((data) => data.warnings),
   };
+  const hasReuse = result.applicationProfiles.some((profile) =>
+    [
+      ...profile.classProfiles,
+      ...profile.datatypePropertyProfiles,
+      ...profile.objectPropertyProfiles,
+    ].some((term) => term.reusesPropertyValue.length > 0),
+  );
+  if (hasReuse) {
+    const visited = new Set([specification.metadata.sourceUrl, specification.metadata.id]);
+    const queue = [...specification.relatedSpecifications];
+    let loaded = 0;
+    for (let index = 0; index < queue.length; index++) {
+      const relation = queue[index]!;
+      if (relation.kind !== "published-specification") continue;
+      const url = relation.targetUrl ?? relation.targetIri;
+      if (visited.has(url) || visited.has(relation.targetIri)) continue;
+      if (loaded >= 32) {
+        result.warnings.push(
+          "Internal dependency loading stopped at 32 publications; some reused values may be unavailable.",
+        );
+        break;
+      }
+      visited.add(url);
+      visited.add(relation.targetIri);
+      loaded++;
+      try {
+        const dependency = await loadSpecificationFromUrl(url, { fetch: fetchDocument });
+        visited.add(dependency.metadata.id);
+        const data = await Promise.all(
+          dependency.artifacts
+            .filter(isCurrentSemanticArtifact)
+            .map((artifact) => loadArtifactData(artifact, fetchDocument, documents)),
+        );
+        result.warnings.push(...data.flatMap((item) => item.warnings));
+        queue.push(...dependency.relatedSpecifications);
+        // Dependencies provide values only: do not add their classes to the current specification.
+      } catch (error) {
+        result.warnings.push(
+          "Unable to load internal specification " + url + ": " + errorMessage(error),
+        );
+      }
+    }
+  }
+  resolveReusedValues(result, documents);
+  return result;
+}
+
+/** Dataspecer's .ldes artifacts contain event versions, not current model terms. */
+function isCurrentSemanticArtifact(artifact: SpecificationArtifact): boolean {
+  if (artifact.type !== "rdf") return false;
+  let path = artifact.url.split(/[?#]/)[0] ?? "";
+  try {
+    path = decodeURIComponent(new URL(artifact.url).pathname);
+  } catch {
+    // Retain the original path if the URL is relative or malformed.
+  }
+  const fileName = path.split("/").pop()?.toLowerCase() ?? "";
+  return !fileName.includes(".ldes.");
 }
 
 async function loadArtifactData(
   artifact: SpecificationArtifact,
   fetchDocument: typeof fetch,
+  documents: Map<string, string>,
 ): Promise<ArtifactSemanticData> {
   const warnings: string[] = [];
   let rdfDocument: string;
@@ -50,6 +120,7 @@ async function loadArtifactData(
       throw new Error(`HTTP ${response.status}`);
     }
     rdfDocument = await response.text();
+    documents.set(artifact.url, rdfDocument);
   } catch (error) {
     return {
       source: createSource(artifact, "unknown"),

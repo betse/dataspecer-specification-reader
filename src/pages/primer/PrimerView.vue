@@ -8,6 +8,10 @@ import { useSpecificationState } from "../../state/specification-state";
 import InteractiveSvgDiagram, { type InteractiveSvgSelection } from "./InteractiveSvgDiagram.vue";
 import { createPrimer } from "./model/primer";
 
+function scrollToSection(id: string): void {
+  globalThis.document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 const state = useSpecificationState();
 const semanticSpecification = shallowRef<SemanticSpecification>();
 const isSemanticLoading = ref(false);
@@ -48,16 +52,10 @@ const diagramTerms = computed(() => [
   ...(primer.value?.classProfiles.map((profile) => ({
     iri: profile.iri,
     label: profile.label,
-    aliases: [
-      ...profile.profiledClassIris,
-      ...profile.profileOfIris,
-      ...profile.specializationOfIris,
-    ],
   })) ?? []),
   ...(primer.value?.vocabularyClasses.map((concept) => ({
     iri: concept.iri,
     label: concept.label,
-    aliases: concept.parentIris,
   })) ?? []),
 ]);
 const keyClasses = computed(() => {
@@ -322,10 +320,12 @@ function termLabel(iri?: string): string {
       </div> -->
 
       <nav class="section-nav" aria-label="Primer sections">
-        <a href="#diagram">Diagram</a>
-        <a href="#profiles">Key profiles</a>
-        <a href="#requirements">Requirement matrix</a>
-        <a href="#resources">Resources</a>
+        <a href="#diagram" @click.prevent="scrollToSection('diagram')">Diagram</a>
+        <a href="#profiles" @click.prevent="scrollToSection('profiles')">Key profiles</a>
+        <a href="#requirements" @click.prevent="scrollToSection('requirements')"
+          >Requirement matrix</a
+        >
+        <a href="#resources" @click.prevent="scrollToSection('resources')">Resources</a>
       </nav>
 
       <section id="diagram" class="primer-section">

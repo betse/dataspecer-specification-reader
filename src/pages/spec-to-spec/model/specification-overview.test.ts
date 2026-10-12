@@ -18,7 +18,7 @@ test("creates an overview from the real DSV-DAP publication", async () => {
     overview.title,
     "Data Specification Vocabulary - Default Application Profile (DSV-DAP)",
   );
-  assert.deepEqual(overview.typeLabels, ["Application Profile", "Profile"]);
+  assert.deepEqual(overview.typeLabels, ["Application profile"]);
   assert.deepEqual(overview.statistics, {
     internalSpecifications: 1,
     externalSpecifications: 1,
@@ -82,4 +82,34 @@ test("creates display-ready overview values without using an IRI as a relation t
   assert.equal(overview.artifacts[0]?.formatLabel, "TTL");
   assert.equal(overview.relatedSpecifications[0]?.title, "dsv");
   assert.equal(overview.relatedSpecifications[0]?.relationLabel, "Profiles");
+});
+
+test("uses reader-friendly specification types without a redundant Profile label", () => {
+  const cases: [string[], string][] = [
+    [["owl:Ontology", "prof:Profile"], "Vocabulary"],
+    [["dsv:ApplicationProfile", "prof:Profile"], "Application profile"],
+    [
+      ["owl:Ontology", "dsv:ApplicationProfile", "prof:Profile"],
+      "Vocabulary & application profile",
+    ],
+    [
+      ["http://www.w3.org/2002/07/owl#Ontology", "https://w3id.org/dsv#ApplicationProfile"],
+      "Vocabulary & application profile",
+    ],
+    [["dsv:ApplicationProfile", "dsv:ApplicationProfile"], "Application profile"],
+    [["prof:Profile"], "Unknown"],
+    [["custom:Ontology"], "Unknown"],
+    [[], "Unknown"],
+  ];
+  for (const [types, label] of cases) {
+    const specification: Specification = {
+      metadata: { id: dsvDapSourceUrl, title: {}, types: [...types] },
+      artifacts: [],
+      relatedSpecifications: [],
+    };
+    const overview = createSpecificationOverview(specification);
+    assert.deepEqual(overview.typeLabels, [label]);
+    assert.equal(overview.metadata.find((row) => row.label === "Resource Type")?.value, label);
+    assert.deepEqual(specification.metadata.types, types);
+  }
 });

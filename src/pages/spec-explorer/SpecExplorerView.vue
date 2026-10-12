@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { computed, reactive, ref, shallowRef, watch } from "vue";
+import { computed, nextTick, reactive, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/router";
+import { collectReferencedClasses } from "./model/referenced-classes";
+import {
+  selectCodeProperties,
+  setCodePropertyPreset,
+  type CodePropertySelection,
+} from "./model/code-property-selection";
 import { loadSemanticSpecification } from "../../data/loading/load-semantic-specification";
 import type { SemanticSpecification } from "../../data/semantic/semantic-specification";
 import { useSpecificationState } from "../../state/specification-state";
@@ -11,19 +17,12 @@ import {
   type ExplorerProperty,
 } from "./model/specification-explorer";
 
-type SidebarTab = "classes" | "properties";
+import ClassReference from "./ClassReference.vue";
+
 type RoleFilter = "all" | "main" | "supportive";
 type CodeFormat = "typescript" | "json" | "turtle";
 type ColumnId =
-  | "name"
-  | "requirement"
-  | "type"
-  | "cardinality"
-  | "range"
-  | "domain"
-  | "definition"
-  | "usageNote"
-  | "iri";
+  "name" | "requirement" | "type" | "cardinality" | "range" | "domain" | "definition" | "iri";
 
 interface ExplorerColumn {
   id: ColumnId;
@@ -35,22 +34,23 @@ interface ExplorerColumn {
 interface PanelState {
   requirement: string;
   propertyKind: string;
+  rangeIri: string;
   search: string;
   detailsOpen: boolean;
   columnOverrides: Partial<Record<ColumnId, boolean>>;
+  columnWidths: Partial<Record<ColumnId, number>>;
   sortColumn?: ColumnId;
   sortDirection: 1 | -1;
 }
 
 const columns: ExplorerColumn[] = [
-  { id: "name", label: "Name", always: true, simple: true },
+  { id: "name", label: "Label", always: true, simple: true },
   { id: "requirement", label: "Requirement", always: false, simple: true },
   { id: "type", label: "Value type", always: false, simple: false },
   { id: "cardinality", label: "Cardinality", always: false, simple: false },
   { id: "range", label: "Range", always: false, simple: false },
   { id: "domain", label: "Domain", always: false, simple: false },
   { id: "definition", label: "Definition", always: false, simple: true },
-  { id: "usageNote", label: "Usage note", always: false, simple: false },
   { id: "iri", label: "IRI", always: false, simple: false },
 ];
 
@@ -58,13 +58,16 @@ const state = useSpecificationState();
 const semanticSpecification = shallowRef<SemanticSpecification>();
 const isLoading = ref(false);
 const errorMessage = ref<string>();
-const sidebarTab = ref<SidebarTab>("classes");
 const roleFilter = ref<RoleFilter>("all");
 const sidebarSearch = ref("");
 const selectedClassIris = ref<string[]>([]);
 const activeView = ref<"list" | "code">("list");
 const codeFormat = ref<CodeFormat>("typescript");
 const codeCopied = ref(false);
+const codeSidebarTab = ref<"classes" | "properties">("classes");
+const codePropertySearch = ref("");
+const codeRequirement = ref("all");
+const codePropertySelection = ref<CodePropertySelection>({});
 const expandedPropertyKeys = ref<string[]>([]);
 const openColumnPickerIri = ref<string>();
 const panelStates = reactive<Record<string, PanelState>>({});
@@ -83,10 +86,73 @@ const selectedClasses = computed(() =>
 const selectedPropertyCount = computed(() =>
   selectedClasses.value.reduce((total, value) => total + value.properties.length, 0),
 );
-const uniqueProperties = computed(() => {
-  const values = explorer.value?.properties ?? [];
-  return [...new Map(values.map((value) => [value.iri, value])).values()];
+// Keep the original model intact: only code generation sees the inclusion overrides.
+const codeClasses = computed(() =>
+  selectCodeProperties(explorer.value?.classes ?? [], codePropertySelection.value),
+);
+const selectedCodeClasses = computed(() =>
+  selectedClassIris.value.flatMap((iri) => {
+    const value = codeClasses.value.find((item) => item.iri === iri);
+    return value ? [value] : [];
+  }),
+);
+const codePropertyCount = computed(() =>
+  selectedCodeClasses.value.reduce((sum, value) => sum + value.properties.length, 0),
+);
+const omittedMandatory = computed(() =>
+  selectedClasses.value.flatMap((value) =>
+    value.properties
+      .filter(
+        (property) =>
+          property.requirement === "mandatory" && !isCodePropertyIncluded(value.iri, property.iri),
+      )
+      .map((property) => ({
+        key: JSON.stringify([value.iri, property.iri]),
+        label: value.label + " — " + property.label,
+      })),
+  ),
+);
+const codePropertyGroups = computed(() => {
+  const query = codePropertySearch.value.trim().toLocaleLowerCase();
+  return selectedClasses.value
+    .map((value) => ({
+      ...value,
+      properties: value.properties.filter(
+        (property) =>
+          (codeRequirement.value === "all" ||
+            (property.requirement ?? "unspecified") === codeRequirement.value) &&
+          (!query ||
+            [property.label, property.iri].some((text) =>
+              text.toLocaleLowerCase().includes(query),
+            )),
+      ),
+    }))
+    .filter((value) => value.properties.length > 0);
 });
+function isCodePropertyIncluded(classIri: string, propertyIri: string): boolean {
+  return codePropertySelection.value[classIri]?.[propertyIri] !== false;
+}
+function toggleCodeProperty(classIri: string, propertyIri: string) {
+  const included = isCodePropertyIncluded(classIri, propertyIri);
+  (codePropertySelection.value[classIri] ??= {})[propertyIri] = !included;
+}
+function applyCodePropertyPreset(mandatoryOnly: boolean) {
+  Object.assign(
+    codePropertySelection.value,
+    setCodePropertyPreset(selectedClasses.value, mandatoryOnly),
+  );
+}
+const referencedClasses = computed(() =>
+  collectReferencedClasses(codeClasses.value, selectedClassIris.value),
+);
+const referencedClassCount = computed(
+  () => referencedClasses.value.classIris.length - selectedClassIris.value.length,
+);
+
+function includeReferencedClasses() {
+  selectedClassIris.value = referencedClasses.value.classIris;
+}
+
 const filteredClasses = computed(() => {
   const query = sidebarSearch.value.trim().toLocaleLowerCase();
   return (explorer.value?.classes ?? []).filter((value) => {
@@ -94,22 +160,16 @@ const filteredClasses = computed(() => {
     const matchesSearch =
       !query ||
       value.label.toLocaleLowerCase().includes(query) ||
-      value.iri.toLocaleLowerCase().includes(query);
+      value.iri.toLocaleLowerCase().includes(query) ||
+      value.properties.some((property) =>
+        [property.label, property.iri].some((text) => text.toLocaleLowerCase().includes(query)),
+      );
     return matchesRole && matchesSearch;
   });
 });
-const filteredProperties = computed(() => {
-  const query = sidebarSearch.value.trim().toLocaleLowerCase();
-  return uniqueProperties.value.filter(
-    (value) =>
-      !query ||
-      value.label.toLocaleLowerCase().includes(query) ||
-      value.iri.toLocaleLowerCase().includes(query),
-  );
-});
 const generatedCode = computed(() => {
   if (!selectedClasses.value.length) return "// Select a class from the sidebar";
-  return selectedClasses.value
+  return selectedCodeClasses.value
     .map((value) => {
       if (codeFormat.value === "json") return createJsonSchema(value);
       if (codeFormat.value === "turtle") return createTurtleExample(value);
@@ -125,6 +185,10 @@ watch(
     semanticSpecification.value = undefined;
     errorMessage.value = undefined;
     selectedClassIris.value = [];
+    codePropertySelection.value = {};
+    codePropertySearch.value = "";
+    codeRequirement.value = "all";
+    codeSidebarTab.value = "classes";
     if (!specification) return;
     let cancelled = false;
     onCleanup(() => {
@@ -148,22 +212,13 @@ watch(
   (classes) => {
     if (!classes) return;
     selectedClassIris.value = classes.slice(0, 2).map((value) => value.iri);
-    if (state.detailMode === "simple") {
-      for (const value of classes) {
-        const existing = panelStates[value.iri];
-        if (existing?.requirement === "mandatory" && !hasMandatoryProperty(value.iri)) {
-          existing.requirement = "";
-        }
-      }
-    }
   },
 );
 
 watch(
   () => state.detailMode,
-  (mode) => {
-    for (const [classIri, value] of Object.entries(panelStates)) {
-      value.requirement = mode === "simple" ? defaultSimpleRequirement(classIri) : "";
+  () => {
+    for (const value of Object.values(panelStates)) {
       value.columnOverrides = {};
     }
   },
@@ -171,25 +226,15 @@ watch(
 
 function panelState(iri: string): PanelState {
   return (panelStates[iri] ??= {
-    requirement: state.detailMode === "simple" ? defaultSimpleRequirement(iri) : "",
+    requirement: "",
     propertyKind: "",
+    rangeIri: "",
     search: "",
     detailsOpen: false,
     columnOverrides: {},
+    columnWidths: {},
     sortDirection: 1,
   });
-}
-
-function defaultSimpleRequirement(classIri: string): string {
-  return hasMandatoryProperty(classIri) ? "mandatory" : "";
-}
-
-function hasMandatoryProperty(classIri: string): boolean {
-  return (
-    explorer.value?.classes
-      .find((value) => value.iri === classIri)
-      ?.properties.some((property) => property.requirement === "mandatory") ?? false
-  );
 }
 
 function isColumnVisible(classIri: string, column: ExplorerColumn): boolean {
@@ -207,8 +252,85 @@ function toggleColumn(classIri: string, column: ExplorerColumn) {
   panelState(classIri).columnOverrides[column.id] = !isColumnVisible(classIri, column);
 }
 
+const MIN_COLUMN_WIDTH = 140;
+const MAX_COLUMN_WIDTH = 1200;
+const resizing = ref<{
+  iri: string;
+  column: ColumnId;
+  x: number;
+  width: number;
+  pointerId: number;
+}>();
+
+function columnWidth(iri: string, column: ColumnId): number {
+  return panelState(iri).columnWidths[column] ?? (column === "definition" ? 360 : 180);
+}
+
+function setColumnWidth(iri: string, column: ColumnId, width: number) {
+  panelState(iri).columnWidths[column] = Math.max(
+    MIN_COLUMN_WIDTH,
+    Math.min(MAX_COLUMN_WIDTH, width),
+  );
+}
+
+function startResize(event: PointerEvent, iri: string, column: ColumnId) {
+  if (event.button !== 0) return;
+  const handle = event.currentTarget as HTMLElement;
+  // Capture rendered widths after the table stretches to fill its container.
+  // This prevents a jump back to default pixel widths when dragging starts.
+  const headers = handle.closest("table")?.querySelectorAll<HTMLElement>("th[data-column-id]");
+  headers?.forEach((header) => {
+    panelState(iri).columnWidths[header.dataset.columnId as ColumnId] =
+      header.getBoundingClientRect().width;
+  });
+  const width = handle.parentElement?.getBoundingClientRect().width ?? columnWidth(iri, column);
+  resizing.value = { iri, column, x: event.clientX, width, pointerId: event.pointerId };
+  handle.setPointerCapture(event.pointerId);
+}
+
+function resizeColumn(event: PointerEvent) {
+  const current = resizing.value;
+  if (!current || event.pointerId !== current.pointerId) return;
+  setColumnWidth(current.iri, current.column, current.width + event.clientX - current.x);
+}
+
+function finishResize(event: PointerEvent) {
+  if (resizing.value?.pointerId !== event.pointerId) return;
+  const handle = event.currentTarget as HTMLElement;
+  resizing.value = undefined;
+  if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+}
+
 function resetColumns(classIri: string) {
   panelState(classIri).columnOverrides = {};
+}
+
+function hasLocalClass(iri: string): boolean {
+  return explorer.value?.classes.some((value) => value.iri === iri) ?? false;
+}
+
+function classPanelId(iri: string): string {
+  return "explorer-class-" + encodeURIComponent(iri);
+}
+
+async function navigateToClass(iri: string) {
+  if (!hasLocalClass(iri)) return;
+  if (!selectedClassIris.value.includes(iri)) {
+    selectedClassIris.value = [...selectedClassIris.value, iri];
+  }
+  activeView.value = "list";
+  panelState(iri).detailsOpen = true;
+  await nextTick();
+  const panel = globalThis.document.getElementById(classPanelId(iri));
+  panel?.focus({ preventScroll: true });
+  panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function selectClass(iri: string, additive: boolean) {
+  if (!additive) selectedClassIris.value = [iri];
+  else if (!selectedClassIris.value.includes(iri)) {
+    selectedClassIris.value = [...selectedClassIris.value, iri];
+  }
 }
 
 function toggleClass(iri: string) {
@@ -217,21 +339,30 @@ function toggleClass(iri: string) {
     : [...selectedClassIris.value, iri];
 }
 
-function selectProperty(property: ExplorerProperty) {
-  const owner = explorer.value?.classes.find((value) => value.iri === property.domainIri);
-  if (!owner) return;
-  if (!selectedClassIris.value.includes(owner.iri)) {
-    selectedClassIris.value = [...selectedClassIris.value, owner.iri];
-  }
-  panelState(owner.iri).search = property.label;
-}
-
 function selectAll() {
   selectedClassIris.value = (explorer.value?.classes ?? []).map((value) => value.iri);
 }
 
 function clearSelection() {
   selectedClassIris.value = [];
+}
+
+// Options come from every property, independent of the active table filters.
+function rangeOptions(value: ExplorerClass): { iri: string; label: string }[] {
+  const labels = new Map<string, string>();
+  for (const property of value.properties) {
+    property.rangeIris.forEach((iri, index) => {
+      if (!labels.has(iri)) labels.set(iri, property.rangeLabels[index] || termLabel(iri));
+    });
+  }
+  const counts = new Map<string, number>();
+  for (const label of labels.values()) counts.set(label, (counts.get(label) ?? 0) + 1);
+  return [...labels]
+    .map(([iri, label]) => ({
+      iri,
+      label: (counts.get(label) ?? 0) > 1 ? label + " — " + iri : label,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 function visibleProperties(value: ExplorerClass): ExplorerProperty[] {
@@ -249,7 +380,8 @@ function visibleProperties(value: ExplorerClass): ExplorerProperty[] {
         property.domainLabel,
         ...property.rangeLabels,
       ].some((text) => text?.toLocaleLowerCase().includes(query));
-    return matchesRequirement && matchesKind && matchesSearch;
+    const matchesRange = !filters.rangeIri || property.rangeIris.includes(filters.rangeIri);
+    return matchesRequirement && matchesKind && matchesRange && matchesSearch;
   });
   if (filters.sortColumn) {
     result.sort(
@@ -282,7 +414,6 @@ function propertyColumnValue(property: ExplorerProperty, column: ColumnId): stri
     range: property.rangeLabels.join(", "),
     domain: property.domainLabel ?? "",
     definition: property.definition ?? "",
-    usageNote: property.usageNote ?? "",
     iri: property.iri,
   };
   return values[column];
@@ -324,7 +455,8 @@ function termLabel(iri: string): string {
 function createTypeScriptInterface(value: ExplorerClass): string {
   const rows = value.properties.flatMap((property) => {
     const optional = property.requirement === "mandatory" ? "" : "?";
-    const type = propertyTypeName(property);
+    const rawType = propertyTypeName(property);
+    const type = rawType.includes(" | ") ? "(" + rawType + ")" : rawType;
     const many = property.cardinality?.endsWith("*") ? "[]" : "";
     const declaration = `  ${safeIdentifier(property.label)}${optional}: ${type}${many};`;
     return state.detailMode === "detailed"
@@ -383,13 +515,21 @@ function createTurtleExample(value: ExplorerClass): string {
 }
 
 function propertyTypeName(property: ExplorerProperty): string {
+  if (property.kind !== "datatype") {
+    // Match interface declaration labels and preserve all object ranges.
+    const types = property.rangeIris.map((iri, index) => {
+      const target = explorer.value?.classes.find((value) => value.iri === iri);
+      return safeIdentifier(target?.label ?? property.rangeLabels[index] ?? termLabel(iri));
+    });
+    return [...new Set(types)].join(" | ") || "unknown";
+  }
   const range = property.rangeLabels[0]?.toLocaleLowerCase() ?? "";
   if (range.includes("boolean")) return "boolean";
   if (range.includes("integer") || range.includes("decimal") || range.includes("number")) {
     return "number";
   }
   if (range.includes("date")) return "Date";
-  return property.kind === "datatype" ? "string" : safeIdentifier(property.rangeLabels[0]);
+  return "string";
 }
 
 function jsonType(property: ExplorerProperty): string {
@@ -460,7 +600,7 @@ function safeIdentifier(value?: string): string {
     </section>
     <section v-else-if="explorer" class="layout">
       <aside class="sidebar">
-        <div class="sb-head">
+        <div v-if="activeView === 'list' || codeSidebarTab === 'classes'" class="sb-head">
           <div class="sb-section-label">Search</div>
           <div class="search-wrap">
             <svg
@@ -477,10 +617,11 @@ function safeIdentifier(value?: string): string {
               v-model="sidebarSearch"
               class="search-input"
               type="search"
-              :placeholder="sidebarTab === 'classes' ? 'Filter classes…' : 'Filter properties…'"
+              placeholder="Search classes or properties…"
+              aria-label="Find classes by class or property label or IRI"
             />
           </div>
-          <template v-if="sidebarTab === 'classes'">
+          <div>
             <div class="sb-section-label">Class role</div>
             <div class="role-chips">
               <button
@@ -494,63 +635,149 @@ function safeIdentifier(value?: string): string {
                 {{ role[0].toUpperCase() + role.slice(1) }}
               </button>
             </div>
-          </template>
+          </div>
         </div>
-        <div class="sb-tabs">
+        <div v-else class="sb-head code-property-controls">
+          <label for="code-property-search" class="sb-section-label">Search</label>
+          <div class="search-wrap">
+            <svg
+              class="search-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              id="code-property-search"
+              v-model="codePropertySearch"
+              class="search-input"
+              type="search"
+              placeholder="Search properties…"
+            />
+          </div>
+          <label for="code-requirement" class="sb-section-label">Requirement</label>
+          <select id="code-requirement" v-model="codeRequirement" class="search-input">
+            <option value="all">All</option>
+            <option value="mandatory">Mandatory</option>
+            <option value="recommended">Recommended</option>
+            <option value="optional">Optional</option>
+            <option value="unspecified">Unspecified</option>
+          </select>
+        </div>
+        <div
+          v-if="activeView === 'code'"
+          class="code-sidebar-tabs"
+          role="group"
+          aria-label="Code selection"
+        >
           <button
-            class="sb-tab"
-            :class="{ active: sidebarTab === 'classes' }"
+            v-for="tab in ['classes', 'properties'] as const"
+            :key="tab"
+            class="code-sidebar-tab"
+            :class="{ active: codeSidebarTab === tab }"
+            :aria-pressed="codeSidebarTab === tab"
             type="button"
-            @click="sidebarTab = 'classes'"
+            @click="codeSidebarTab = tab"
           >
-            Classes
-          </button>
-          <button
-            class="sb-tab"
-            :class="{ active: sidebarTab === 'properties' }"
-            type="button"
-            @click="sidebarTab = 'properties'"
-          >
-            Properties
+            {{ tab === "classes" ? "Classes" : "Properties" }}
           </button>
         </div>
-        <div class="class-list">
-          <template v-if="sidebarTab === 'classes'">
-            <button
+        <template v-if="activeView === 'list' || codeSidebarTab === 'classes'">
+          <div v-if="activeView === 'list'" class="class-list-heading">Classes</div>
+          <p id="class-selection-hint" class="selection-hint">
+            Click to select one. Shift+click to add. Use checkboxes to toggle.
+          </p>
+          <div class="class-list">
+            <div
               v-for="item in filteredClasses"
               :key="item.iri"
               class="class-item"
               :class="{ selected: selectedClassIris.includes(item.iri) }"
-              type="button"
-              @click="toggleClass(item.iri)"
             >
-              <span class="ci-check">
-                <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                  <polyline points="1,3.5 3.5,6 8,1" stroke="white" stroke-width="1.8" />
-                </svg>
-              </span>
-              <span class="ci-badge" :class="item.role">{{ roleLabel(item) }}</span>
-              <span class="ci-name">{{ item.label }}</span>
-              <span class="ci-count">{{ item.properties.length }}</span>
-            </button>
-          </template>
-          <template v-else>
+              <input
+                class="ci-check"
+                type="checkbox"
+                :checked="selectedClassIris.includes(item.iri)"
+                :aria-label="'Include ' + item.label + ' in active context'"
+                @change="toggleClass(item.iri)"
+              />
+              <button
+                class="class-select"
+                type="button"
+                :aria-pressed="selectedClassIris.includes(item.iri)"
+                aria-describedby="class-selection-hint"
+                @click="selectClass(item.iri, $event.shiftKey)"
+              >
+                <span class="ci-badge" :class="item.role">{{ roleLabel(item) }}</span>
+                <span class="ci-name">{{ item.label }}</span>
+                <span class="ci-count">{{ item.properties.length }}</span>
+              </button>
+            </div>
+            <p v-if="!filteredClasses.length" class="class-list-empty">No matching classes.</p>
+          </div>
+          <div class="sb-footer">
+            <button class="sel-btn" type="button" @click="selectAll">Select all</button>
+            <button class="sel-btn" type="button" @click="clearSelection">Clear</button>
+          </div>
+        </template>
+        <template v-else>
+          <p class="selection-hint">
+            Choose properties to include in code. Filters only narrow this checklist.
+          </p>
+          <div class="class-list">
+            <section v-for="item in codePropertyGroups" :key="item.iri" class="code-property-group">
+              <h3 :title="item.iri">{{ item.label }}</h3>
+              <label
+                v-for="property in item.properties"
+                :key="property.iri"
+                class="code-property-option"
+                :title="property.iri"
+              >
+                <input
+                  type="checkbox"
+                  :checked="isCodePropertyIncluded(item.iri, property.iri)"
+                  :aria-label="'Include ' + property.label + ' in ' + item.label + ' code'"
+                  @change="toggleCodeProperty(item.iri, property.iri)"
+                />
+                <span
+                  >{{ property.label
+                  }}<small>{{ property.requirement ?? "Unspecified" }}</small></span
+                >
+              </label>
+            </section>
+            <p v-if="!selectedClasses.length" class="class-list-empty">
+              Select classes in the Classes tab first.
+            </p>
+            <p v-else-if="!selectedPropertyCount" class="class-list-empty">
+              No properties are available for the selected classes.
+            </p>
+            <p v-else-if="!codePropertyGroups.length" class="class-list-empty">
+              No properties match your search or filters.
+            </p>
+          </div>
+          <div class="sb-footer code-property-actions">
+            <span>Apply to all selected classes, regardless of filters:</span>
             <button
-              v-for="property in filteredProperties"
-              :key="property.iri"
-              class="class-item property-item"
+              class="sel-btn"
               type="button"
-              @click="selectProperty(property)"
+              :disabled="!selectedClasses.length"
+              @click="applyCodePropertyPreset(false)"
             >
-              <span class="ci-badge" :class="property.kind">{{ property.kind }}</span>
-              <span class="ci-name">{{ property.label }}</span>
+              Include all
             </button>
-          </template>
-        </div>
-        <div class="sb-footer">
-          <button class="sel-btn" type="button" @click="selectAll">Select all</button>
-          <button class="sel-btn" type="button" @click="clearSelection">Clear</button>
-        </div>
+            <button
+              class="sel-btn"
+              type="button"
+              :disabled="!selectedClasses.length"
+              @click="applyCodePropertyPreset(true)"
+            >
+              Include mandatory only
+            </button>
+          </div>
+        </template>
       </aside>
 
       <main class="main">
@@ -606,15 +833,12 @@ function safeIdentifier(value?: string): string {
           class="panels-scroll"
           @click="openColumnPickerIri = undefined"
         >
-          <!-- <div
-            v-if="explorer.warnings.length"
-            class="warnings"
-            :title="explorer.warnings.join('\n')"
-          >
-            {{ explorer.warnings.length }} semantic data warning{{
-              explorer.warnings.length === 1 ? "" : "s"
-            }}
-          </div> -->
+          <!-- <details v-if="explorer.warnings.length" class="warnings">
+            <summary>{{ explorer.warnings.length }} data loading warnings</summary>
+            <ul>
+              <li v-for="warning in explorer.warnings" :key="warning">{{ warning }}</li>
+            </ul>
+          </details> -->
           <div v-if="!selectedClasses.length" class="no-selection">
             <svg viewBox="0 0 24 24">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -625,7 +849,13 @@ function safeIdentifier(value?: string): string {
             <small>Choose one or more from the sidebar — each gets its own table</small>
           </div>
 
-          <article v-for="item in selectedClasses" :key="item.iri" class="class-panel">
+          <article
+            v-for="item in selectedClasses"
+            :key="item.iri"
+            :id="classPanelId(item.iri)"
+            tabindex="-1"
+            class="class-panel"
+          >
             <header class="panel-header">
               <div class="panel-title-wrap">
                 <h2 class="panel-class-name">{{ item.label }}</h2>
@@ -652,6 +882,43 @@ function safeIdentifier(value?: string): string {
             <div class="panel-extra" :class="{ open: panelState(item.iri).detailsOpen }">
               <div class="extra-inner">
                 <div class="extra-grid">
+                  <div
+                    v-for="(reuse, index) in item.reusedValues"
+                    :key="index"
+                    class="extra-field ef-full"
+                  >
+                    <label
+                      >{{
+                        reuse.field === "prefLabel"
+                          ? "Label"
+                          : reuse.field === "usageNote"
+                            ? "Usage note"
+                            : "Definition"
+                      }}
+                      source</label
+                    >
+                    <div class="ef-val">
+                      <span v-if="reuse.resolved">Reused from </span>
+                      <span v-else
+                        >Reused value unavailable. External vocabularies are not fetched; internal
+                        sources may be missing or inaccessible. Source:
+                      </span>
+                      <a :href="reuse.sourceIri" target="_blank" rel="noopener noreferrer">{{
+                        reuse.sourceIri
+                      }}</a>
+                    </div>
+                  </div>
+                  <div
+                    v-if="
+                      !item.definition &&
+                      !item.usageNote &&
+                      !item.backwardsAssociations.length &&
+                      !item.reusedValues?.length
+                    "
+                    class="extra-field ef-full"
+                  >
+                    No additional details are available in the loaded artifacts.
+                  </div>
                   <div v-if="item.definition" class="extra-field ef-full">
                     <label>Definition</label>
                     <div class="ef-val">{{ item.definition }}</div>
@@ -695,6 +962,24 @@ function safeIdentifier(value?: string): string {
                   <option value="unknown">Unknown</option>
                 </select>
               </div>
+              <label class="filter-group">
+                <span class="filter-label">Range</span>
+                <select
+                  v-model="panelState(item.iri).rangeIri"
+                  class="filter-select range-select"
+                  :title="panelState(item.iri).rangeIri || 'All ranges'"
+                >
+                  <option value="">All ranges</option>
+                  <option
+                    v-for="range in rangeOptions(item)"
+                    :key="range.iri"
+                    :value="range.iri"
+                    :title="range.iri"
+                  >
+                    {{ range.label }}
+                  </option>
+                </select>
+              </label>
               <div class="tbl-search-wrap">
                 <svg class="tbl-search-icon" viewBox="0 0 24 24">
                   <circle cx="11" cy="11" r="8" />
@@ -750,6 +1035,13 @@ function safeIdentifier(value?: string): string {
                   <button class="dd-reset" type="button" @click="resetColumns(item.iri)">
                     Reset to {{ state.detailMode }} defaults
                   </button>
+                  <button
+                    class="dd-reset"
+                    type="button"
+                    @click="panelState(item.iri).columnWidths = {}"
+                  >
+                    Reset column widths
+                  </button>
                 </div>
               </div>
             </div>
@@ -758,13 +1050,34 @@ function safeIdentifier(value?: string): string {
               <div v-if="!visibleProperties(item).length" class="panel-empty">
                 No properties match — try adjusting the filters above.
               </div>
-              <table v-else class="spec-table">
+              <table
+                v-else
+                class="spec-table"
+                :style="{
+                  width:
+                    42 +
+                    visibleColumns(item.iri).reduce(
+                      (total, column) => total + columnWidth(item.iri, column.id),
+                      0,
+                    ) +
+                    'px',
+                }"
+              >
+                <colgroup>
+                  <col style="width: 42px" />
+                  <col
+                    v-for="column in visibleColumns(item.iri)"
+                    :key="column.id"
+                    :style="{ width: columnWidth(item.iri, column.id) + 'px' }"
+                  />
+                </colgroup>
                 <thead>
                   <tr>
                     <th class="expand-column"></th>
                     <th
                       v-for="column in visibleColumns(item.iri)"
                       :key="column.id"
+                      :data-column-id="column.id"
                       :class="{ sorted: panelState(item.iri).sortColumn === column.id }"
                       @click="sortTable(item.iri, column.id)"
                     >
@@ -778,6 +1091,30 @@ function safeIdentifier(value?: string): string {
                             : "⇅"
                         }}
                       </span>
+                      <span
+                        class="column-resizer"
+                        role="separator"
+                        tabindex="0"
+                        aria-orientation="vertical"
+                        :aria-label="'Resize ' + column.label + ' column'"
+                        :aria-valuenow="columnWidth(item.iri, column.id)"
+                        :aria-valuemin="MIN_COLUMN_WIDTH"
+                        :aria-valuemax="MAX_COLUMN_WIDTH"
+                        title="Drag to resize. Use arrow keys to adjust; double-click to reset."
+                        @click.stop
+                        @dblclick.stop="delete panelState(item.iri).columnWidths[column.id]"
+                        @pointerdown.stop.prevent="startResize($event, item.iri, column.id)"
+                        @pointermove="resizeColumn"
+                        @pointerup="finishResize"
+                        @pointercancel="finishResize"
+                        @lostpointercapture="resizing = undefined"
+                        @keydown.left.stop.prevent="
+                          setColumnWidth(item.iri, column.id, columnWidth(item.iri, column.id) - 20)
+                        "
+                        @keydown.right.stop.prevent="
+                          setColumnWidth(item.iri, column.id, columnWidth(item.iri, column.id) + 20)
+                        "
+                      ></span>
                     </th>
                   </tr>
                 </thead>
@@ -812,16 +1149,29 @@ function safeIdentifier(value?: string): string {
                           {{ property.cardinality ?? "—" }}
                         </span>
                         <span v-else-if="column.id === 'range'" class="mono-cell">
-                          {{ property.rangeLabels.join(", ") || "—" }}
+                          <template v-for="(iri, index) in property.rangeIris" :key="iri">
+                            <span v-if="index">, </span>
+                            <ClassReference
+                              :iri="iri"
+                              :label="property.rangeLabels[index] ?? termLabel(iri)"
+                              :local="hasLocalClass(iri)"
+                              @navigate="navigateToClass"
+                            />
+                          </template>
+                          <span v-if="!property.rangeIris.length">—</span>
                         </span>
-                        <span v-else-if="column.id === 'domain'">
-                          {{ property.domainLabel ?? "—" }}
+                        <span v-else-if="column.id === 'domain'" class="domain-value">
+                          <ClassReference
+                            v-if="property.domainIri"
+                            :iri="property.domainIri"
+                            :label="property.domainLabel ?? termLabel(property.domainIri)"
+                            :local="hasLocalClass(property.domainIri)"
+                            @navigate="navigateToClass"
+                          />
+                          <span v-else>—</span>
                         </span>
                         <span v-else-if="column.id === 'definition'" class="definition-cell">
                           {{ property.definition ?? "—" }}
-                        </span>
-                        <span v-else-if="column.id === 'usageNote'" class="usage-note-cell">
-                          {{ property.usageNote ?? "—" }}
                         </span>
                         <span
                           v-else-if="column.id === 'iri'"
@@ -835,6 +1185,35 @@ function safeIdentifier(value?: string): string {
                     <tr v-if="isPropertyExpanded(item.iri, property.iri)" class="detail-row">
                       <td :colspan="visibleColumns(item.iri).length + 1">
                         <div class="detail-grid">
+                          <div
+                            v-for="(reuse, index) in property.reusedValues"
+                            :key="index"
+                            class="df full"
+                          >
+                            <label
+                              >{{
+                                reuse.field === "prefLabel"
+                                  ? "Label"
+                                  : reuse.field === "usageNote"
+                                    ? "Usage note"
+                                    : "Definition"
+                              }}
+                              source</label
+                            >
+                            <div class="dv">
+                              {{
+                                reuse.resolved
+                                  ? "Reused from"
+                                  : "Reused value unavailable in loaded data; external vocabularies are not fetched. Source:"
+                              }}
+                              <a
+                                :href="reuse.sourceIri"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                >{{ reuse.sourceIri }}</a
+                              >
+                            </div>
+                          </div>
                           <div class="df">
                             <label>Full IRI</label>
                             <div class="dv mono">{{ property.iri }}</div>
@@ -845,11 +1224,31 @@ function safeIdentifier(value?: string): string {
                           </div>
                           <div class="df">
                             <label>Domain</label>
-                            <div class="dv">{{ property.domainLabel ?? "—" }}</div>
+                            <div class="dv domain-value">
+                              <ClassReference
+                                v-if="property.domainIri"
+                                :iri="property.domainIri"
+                                :label="property.domainLabel ?? termLabel(property.domainIri)"
+                                :local="hasLocalClass(property.domainIri)"
+                                @navigate="navigateToClass"
+                              />
+                              <span v-else>—</span>
+                            </div>
                           </div>
                           <div class="df">
                             <label>Range</label>
-                            <div class="dv">{{ property.rangeLabels.join(", ") || "—" }}</div>
+                            <div class="dv">
+                              <template v-for="(iri, index) in property.rangeIris" :key="iri">
+                                <span v-if="index">, </span>
+                                <ClassReference
+                                  :iri="iri"
+                                  :label="property.rangeLabels[index] ?? termLabel(iri)"
+                                  :local="hasLocalClass(iri)"
+                                  @navigate="navigateToClass"
+                                />
+                              </template>
+                              <span v-if="!property.rangeIris.length">—</span>
+                            </div>
                           </div>
                           <div class="df">
                             <label>Cardinality</label>
@@ -893,8 +1292,36 @@ function safeIdentifier(value?: string): string {
               </button>
             </div>
             <span class="code-context-count"
-              >From {{ selectedClasses.length }} selected classes</span
+              >{{ codePropertyCount }} properties from {{ selectedClasses.length }} selected
+              classes</span
             >
+            <button
+              v-if="codeFormat === 'typescript'"
+              class="fmt-btn"
+              type="button"
+              :disabled="!referencedClassCount"
+              @click="includeReferencedClasses"
+            >
+              Include referenced classes ({{ referencedClassCount }})
+            </button>
+          </div>
+          <div
+            v-if="codeFormat === 'typescript' && referencedClasses.missingIris.length"
+            class="code-reference-warning"
+            role="status"
+          >
+            Definitions for these referenced types are not available in the loaded data. Supply
+            their declarations or imports before using the code:
+            <ul>
+              <li v-for="iri in referencedClasses.missingIris" :key="iri">{{ iri }}</li>
+            </ul>
+          </div>
+          <div v-if="omittedMandatory.length" class="code-reference-warning" role="status">
+            Mandatory properties are excluded. This output is a partial selection, not a complete
+            conforming record:
+            <ul>
+              <li v-for="property in omittedMandatory" :key="property.key">{{ property.label }}</li>
+            </ul>
           </div>
           <pre
             class="code-area"
@@ -906,6 +1333,116 @@ function safeIdentifier(value?: string): string {
 </template>
 
 <style scoped>
+.code-sidebar-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.code-sidebar-tab {
+  flex: 1;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.code-sidebar-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.code-sidebar-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.code-property-controls {
+  display: grid;
+  gap: 8px;
+}
+.code-property-controls select.search-input {
+  width: 100%;
+  padding-left: 10px;
+}
+.code-property-group {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.code-property-group h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.code-property-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.code-property-option input {
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.code-property-option span {
+  min-width: 0;
+}
+.code-property-option small {
+  display: block;
+  color: var(--text2);
+  font-size: 11px;
+}
+.code-property-actions {
+  flex-wrap: wrap;
+}
+.code-property-actions span {
+  width: 100%;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.range-select {
+  max-width: 240px;
+  text-overflow: ellipsis;
+}
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  border-right: 1px solid var(--border);
+}
+/* .column-resizer:hover,
+.column-resizer:focus-visible {
+  background: var(--accent-mid);
+  outline: 1px solid var(--border2);
+} */
+
+.domain-value {
+  font-weight: 400;
+}
+.class-panel {
+  scroll-margin-top: 16px;
+}
+.code-reference-warning {
+  padding: 12px 18px;
+  background: var(--amber-bg);
+  color: var(--amber-fg);
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.code-reference-warning ul {
+  margin-left: 2em;
+}
+
 .explorer-shell {
   --bg: #f9f9ff;
   --surface: #fff;
@@ -1039,31 +1576,16 @@ function safeIdentifier(value?: string): string {
   background: var(--accent-bg);
   color: var(--accent);
 }
-.sb-tabs {
-  display: flex;
+.class-list-heading {
+  padding: 7px 14px;
   border-bottom: 1px solid var(--border);
-}
-.sb-tab {
-  flex: 1;
-  padding: 7px 0;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
   color: var(--text2);
   font-size: calc(11px + var(--responsive-font-increase));
   font-weight: 500;
-  transform: none;
 }
-.sb-tab:hover {
-  border-color: transparent;
-  background: none;
-  color: var(--text);
-  transform: none;
-}
-.sb-tab.active {
-  border-bottom-color: var(--accent);
-  color: var(--accent);
+.class-list-empty {
+  padding: 7px 14px;
+  color: var(--text2);
 }
 .class-list {
   flex: 1;
@@ -1075,7 +1597,7 @@ function safeIdentifier(value?: string): string {
   width: 100%;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
+  padding: 0 14px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1095,26 +1617,42 @@ function safeIdentifier(value?: string): string {
   color: var(--accent);
   font-weight: 500;
 }
-.ci-check {
+.selection-hint {
+  margin: 0;
+  padding: 6px 14px;
+  color: var(--text2);
+  font-size: 12px;
+}
+.class-select {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 7px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  box-shadow: none;
+  transform: none;
+}
+.class-select:hover {
+  background: transparent;
+  transform: none;
+}
+.class-select:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.ci-check {
   width: 15px;
   height: 15px;
-  align-items: center;
-  justify-content: center;
+  margin: 0;
   flex-shrink: 0;
-  border: 1.5px solid var(--border2);
-  border-radius: 3px;
-  background: var(--surface);
-}
-.ci-check svg {
-  display: none;
-}
-.class-item.selected .ci-check {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-.class-item.selected .ci-check svg {
-  display: block;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 .ci-badge {
   flex-shrink: 0;
@@ -1447,7 +1985,7 @@ function safeIdentifier(value?: string): string {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 20px;
   flex-wrap: wrap;
   margin-top: 10px;
   padding: 9px 18px;
@@ -1619,6 +2157,7 @@ function safeIdentifier(value?: string): string {
   font-weight: 400;
   text-align: center;
   transform: none;
+  margin: 2px 1px;
 }
 .dd-reset:hover {
   border-color: var(--border);
@@ -1631,11 +2170,13 @@ function safeIdentifier(value?: string): string {
   border-top: 1px solid var(--border);
 }
 .spec-table {
-  width: 100%;
+  min-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: calc(12px + var(--responsive-font-increase));
 }
 .spec-table th {
+  position: relative;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface2);
@@ -1675,6 +2216,7 @@ function safeIdentifier(value?: string): string {
   background: var(--surface2);
 }
 .spec-table td {
+  overflow-wrap: anywhere;
   padding: 14px;
   vertical-align: top;
 }
@@ -1745,10 +2287,6 @@ function safeIdentifier(value?: string): string {
 .definition-cell {
   max-width: 430px;
   color: var(--text2);
-}
-.usage-note-cell {
-  color: var(--text3);
-  font-style: italic;
 }
 .iri-cell {
   color: var(--text3);

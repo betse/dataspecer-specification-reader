@@ -1,5 +1,8 @@
 import type { ArtifactType, SpecificationArtifact } from "../../../data/model/artifact";
-import { selectLocalizedString } from "../../../data/model/localized-string";
+import {
+  selectLocalizedString,
+  preferredContentLanguages,
+} from "../../../data/model/localized-string";
 import type { Specification } from "../../../data/model/specification";
 import {
   Cardinality,
@@ -120,21 +123,24 @@ export function createPrimer(
   specification: Specification,
   semanticSpecification?: SemanticSpecification,
 ): Primer {
+  const preferredLanguages = preferredContentLanguages(specification.metadata.language);
   const metadata = specification.metadata;
-  const resources = specification.artifacts.map(createResource);
+  const resources = specification.artifacts.map((value) =>
+    createResource(value, preferredLanguages),
+  );
   const diagramResource = resources.find((resource) => resource.type === "svg");
-  const semantic = createSemanticContent(semanticSpecification);
+  const semantic = createSemanticContent(semanticSpecification, preferredLanguages);
 
   return {
-    title: selectLocalizedString(metadata.title) ?? "Untitled specification",
+    title: selectLocalizedString(metadata.title, preferredLanguages) ?? "Untitled specification",
     description:
-      selectLocalizedString(metadata.description) ??
+      selectLocalizedString(metadata.description, preferredLanguages) ??
       "No description was provided by the specification metadata.",
     kindLabel: specificationKindLabel(metadata.types),
     sourceUrl: metadata.sourceUrl ?? metadata.iri,
     badges: [
       metadata.version ? { label: `Version ${metadata.version}` } : undefined,
-      localizedBadge(metadata.publisher),
+      localizedBadge(metadata.publisher, preferredLanguages),
       metadata.license ? { label: metadata.license } : undefined,
     ].filter((badge): badge is PrimerBadge => badge !== undefined),
     statistics: {
@@ -171,7 +177,8 @@ interface PrimerSemanticContent {
 }
 
 function createSemanticContent(
-  semanticSpecification?: SemanticSpecification,
+  semanticSpecification: SemanticSpecification | undefined,
+  preferredLanguages: string[],
 ): PrimerSemanticContent {
   if (!semanticSpecification) {
     return {
@@ -201,13 +208,15 @@ function createSemanticContent(
   const propertyByIri = new Map(properties.map((item) => [item.iri, item]));
 
   return {
-    vocabularyClasses: classes.map(createVocabularyClass),
-    vocabularyProperties: properties.map(createVocabularyProperty),
+    vocabularyClasses: classes.map((value) => createVocabularyClass(value, preferredLanguages)),
+    vocabularyProperties: properties.map((value) =>
+      createVocabularyProperty(value, preferredLanguages),
+    ),
     classProfiles: classProfiles.map((profile) =>
-      createClassProfile(profile, propertyProfiles, classByIri),
+      createClassProfile(profile, propertyProfiles, classByIri, preferredLanguages),
     ),
     propertyProfiles: propertyProfiles.map((profile) =>
-      createPropertyProfile(profile, propertyByIri),
+      createPropertyProfile(profile, propertyByIri, preferredLanguages),
     ),
     semanticSources: semanticSpecification.sources.map((source) => ({
       ...source,
@@ -217,21 +226,27 @@ function createSemanticContent(
   };
 }
 
-function createVocabularyClass(value: OwlClass): PrimerVocabularyClass {
+function createVocabularyClass(
+  value: OwlClass,
+  preferredLanguages: string[],
+): PrimerVocabularyClass {
   return {
     iri: value.iri,
-    label: selectLocalizedString(value.name) ?? shortIriLabel(value.iri),
-    description: selectLocalizedString(value.description),
+    label: selectLocalizedString(value.name, preferredLanguages) ?? shortIriLabel(value.iri),
+    description: selectLocalizedString(value.description, preferredLanguages),
     definedBy: value.isDefinedBy || undefined,
     parentIris: value.subClassOf,
   };
 }
 
-function createVocabularyProperty(value: OwlProperty): PrimerVocabularyProperty {
+function createVocabularyProperty(
+  value: OwlProperty,
+  preferredLanguages: string[],
+): PrimerVocabularyProperty {
   return {
     iri: value.iri,
-    label: selectLocalizedString(value.name) ?? shortIriLabel(value.iri),
-    description: selectLocalizedString(value.description),
+    label: selectLocalizedString(value.name, preferredLanguages) ?? shortIriLabel(value.iri),
+    description: selectLocalizedString(value.description, preferredLanguages),
     definedBy: value.isDefinedBy || undefined,
     domainIri: value.domain || undefined,
     rangeIri: value.range || undefined,
@@ -244,18 +259,19 @@ function createClassProfile(
   profile: ClassProfile,
   propertyProfiles: PropertyProfile[],
   classByIri: Map<string, OwlClass>,
+  preferredLanguages: string[],
 ): PrimerClassProfile {
   const vocabularyClass = profile.profiledClassIri.map((iri) => classByIri.get(iri)).find(Boolean);
 
   return {
     iri: profile.iri,
     label:
-      selectLocalizedString(profile.prefLabel) ??
-      selectLocalizedString(vocabularyClass?.name) ??
+      selectLocalizedString(profile.prefLabel, preferredLanguages) ??
+      selectLocalizedString(vocabularyClass?.name, preferredLanguages) ??
       shortIriLabel(profile.iri),
     description:
-      selectLocalizedString(profile.definition) ??
-      selectLocalizedString(vocabularyClass?.description),
+      selectLocalizedString(profile.definition, preferredLanguages) ??
+      selectLocalizedString(vocabularyClass?.description, preferredLanguages),
     profiledClassIris: profile.profiledClassIri,
     profileOfIris: profile.profileOfIri,
     specializationOfIris: profile.specializationOfIri,
@@ -270,6 +286,7 @@ function createClassProfile(
 function createPropertyProfile(
   profile: PropertyProfile,
   propertyByIri: Map<string, OwlProperty>,
+  preferredLanguages: string[],
 ): PrimerPropertyProfile {
   const vocabularyProperty = profile.profiledPropertyIri
     .map((iri) => propertyByIri.get(iri))
@@ -278,12 +295,12 @@ function createPropertyProfile(
   return {
     iri: profile.iri,
     label:
-      selectLocalizedString(profile.prefLabel) ??
-      selectLocalizedString(vocabularyProperty?.name) ??
+      selectLocalizedString(profile.prefLabel, preferredLanguages) ??
+      selectLocalizedString(vocabularyProperty?.name, preferredLanguages) ??
       shortIriLabel(profile.iri),
     description:
-      selectLocalizedString(profile.definition) ??
-      selectLocalizedString(vocabularyProperty?.description),
+      selectLocalizedString(profile.definition, preferredLanguages) ??
+      selectLocalizedString(vocabularyProperty?.description, preferredLanguages),
     kindLabel: isObjectPropertyProfile(profile) ? "Object property" : "Datatype property",
     domainIri: profile.domainIri || undefined,
     profiledPropertyIris: profile.profiledPropertyIri,
@@ -392,16 +409,23 @@ function cardinalityLabel(cardinality: Cardinality | null): string | undefined {
 
 function localizedBadge(
   value: Parameters<typeof selectLocalizedString>[0],
+  preferredLanguages: string[],
 ): PrimerBadge | undefined {
-  const label = selectLocalizedString(value);
+  const label = selectLocalizedString(value, preferredLanguages);
   return label ? { label } : undefined;
 }
 
-function createResource(artifact: SpecificationArtifact): PrimerResource {
+function createResource(
+  artifact: SpecificationArtifact,
+  preferredLanguages: string[],
+): PrimerResource {
   return {
     id: artifact.id,
-    title: selectLocalizedString(artifact.title) ?? resourceTypeLabel(artifact.type),
-    description: selectLocalizedString(artifact.description) ?? resourceDescription(artifact),
+    title:
+      selectLocalizedString(artifact.title, preferredLanguages) ?? resourceTypeLabel(artifact.type),
+    description:
+      selectLocalizedString(artifact.description, preferredLanguages) ??
+      resourceDescription(artifact),
     type: artifact.type,
     formatLabel: artifactFormatLabel(artifact),
     mediaType: artifact.mediaType,

@@ -1,4 +1,7 @@
-import { selectLocalizedString } from "../../../data/model/localized-string";
+import {
+  selectLocalizedString,
+  preferredContentLanguages,
+} from "../../../data/model/localized-string";
 import type { Specification } from "../../../data/model/specification";
 import {
   Cardinality,
@@ -16,6 +19,8 @@ import {
   type OwlProperty,
 } from "../../../data/semantic/vocabulary/vocabulary-model";
 
+import type { ReusedValueDetail } from "../../../data/semantic/resolve-reused-values";
+
 export interface SpecificationExplorer {
   title: string;
   description: string;
@@ -26,6 +31,7 @@ export interface SpecificationExplorer {
 }
 
 export interface ExplorerClass {
+  reusedValues?: ReusedValueDetail[];
   iri: string;
   label: string;
   kind: ExplorerClassKind;
@@ -64,6 +70,7 @@ export type ExplorerPropertyKind = "object" | "datatype" | "unknown";
 export type ExplorerRequirement = "mandatory" | "recommended" | "optional";
 
 export interface ExplorerProperty {
+  reusedValues?: ReusedValueDetail[];
   iri: string;
   label: string;
   kind: ExplorerPropertyKind;
@@ -86,6 +93,7 @@ export function createSpecificationExplorer(
   specification: Specification,
   semanticSpecification: SemanticSpecification,
 ): SpecificationExplorer {
+  const preferredLanguages = preferredContentLanguages(specification.metadata.language);
   const vocabularyClasses = uniqueByIri(
     semanticSpecification.vocabularies.flatMap((vocabulary) => vocabulary.classes),
   );
@@ -109,21 +117,32 @@ export function createSpecificationExplorer(
     vocabularyProperties,
     classProfiles,
     propertyProfiles,
+    preferredLanguages,
   );
   const labelForIri = (iri: string) => labels.get(iri) ?? shortIriLabel(iri);
 
   const properties = [
-    ...propertyProfiles.map((profile) =>
-      createProfileProperty(profile, vocabularyPropertyByIri, labelForIri),
+    ...propertyProfiles.map((profile) => ({
+      ...createProfileProperty(profile, vocabularyPropertyByIri, labelForIri, preferredLanguages),
+      ...(semanticSpecification.reusedValues?.[profile.iri]
+        ? { reusedValues: semanticSpecification.reusedValues[profile.iri] }
+        : {}),
+    })),
+    ...vocabularyProperties.map((property) =>
+      createVocabularyProperty(property, labelForIri, preferredLanguages),
     ),
-    ...vocabularyProperties.map((property) => createVocabularyProperty(property, labelForIri)),
   ];
 
   const classes = [
-    ...classProfiles.map((profile) =>
-      createProfileClass(profile, vocabularyClassByIri, labelForIri),
+    ...classProfiles.map((profile) => ({
+      ...createProfileClass(profile, vocabularyClassByIri, labelForIri, preferredLanguages),
+      ...(semanticSpecification.reusedValues?.[profile.iri]
+        ? { reusedValues: semanticSpecification.reusedValues[profile.iri] }
+        : {}),
+    })),
+    ...vocabularyClasses.map((value) =>
+      createVocabularyClass(value, labelForIri, preferredLanguages),
     ),
-    ...vocabularyClasses.map((value) => createVocabularyClass(value, labelForIri)),
   ].map((value) => ({
     ...value,
     properties: properties.filter((property) => property.domainIri === value.iri),
@@ -148,8 +167,11 @@ export function createSpecificationExplorer(
   }));
 
   return {
-    title: selectLocalizedString(specification.metadata.title) ?? "Untitled specification",
-    description: selectLocalizedString(specification.metadata.description) ?? "",
+    title:
+      selectLocalizedString(specification.metadata.title, preferredLanguages) ??
+      "Untitled specification",
+    description:
+      selectLocalizedString(specification.metadata.description, preferredLanguages) ?? "",
     iri:
       specification.metadata.iri ?? specification.metadata.sourceUrl ?? specification.metadata.id,
     classes: classesWithAssociations,
@@ -162,17 +184,22 @@ function createProfileClass(
   profile: ClassProfile,
   vocabularyClassByIri: Map<string, OwlClass>,
   labelForIri: (iri: string) => string,
+  preferredLanguages: string[],
 ): ExplorerClass {
   const vocabularyClass = firstReferenced(profile.profiledClassIri, vocabularyClassByIri);
   return {
     iri: profile.iri,
-    label: selectLocalizedString(profile.prefLabel) ?? labelForIri(profile.iri),
+    label: selectLocalizedString(profile.prefLabel, preferredLanguages) ?? labelForIri(profile.iri),
     kind: "class-profile",
     role: classRole(profile.classRole),
     definition:
-      selectLocalizedString(profile.definition) ??
-      selectLocalizedString(vocabularyClass?.description),
-    usageNote: selectLocalizedString(profile.usageNote),
+      selectLocalizedString(profile.definition, preferredLanguages) ??
+      (profile.reusesPropertyValue.some(
+        (reuse) => reuse.reusedAsPropertyIri === "http://www.w3.org/2004/02/skos/core#definition",
+      )
+        ? undefined
+        : selectLocalizedString(vocabularyClass?.description, preferredLanguages)),
+    usageNote: selectLocalizedString(profile.usageNote, preferredLanguages),
     externalDocumentationUrl: profile.externalDocumentationUrl ?? undefined,
     profiledClassIris: [...profile.profiledClassIri],
     profileOfIris: [...profile.profileOfIri],
@@ -191,12 +218,13 @@ function createProfileClass(
 function createVocabularyClass(
   value: OwlClass,
   labelForIri: (iri: string) => string,
+  preferredLanguages: string[],
 ): ExplorerClass {
   return {
     iri: value.iri,
-    label: selectLocalizedString(value.name) ?? labelForIri(value.iri),
+    label: selectLocalizedString(value.name, preferredLanguages) ?? labelForIri(value.iri),
     kind: "vocabulary-class",
-    definition: selectLocalizedString(value.description),
+    definition: selectLocalizedString(value.description, preferredLanguages),
     profiledClassIris: [],
     profileOfIris: [],
     specializationIris: [],
@@ -211,6 +239,7 @@ function createProfileProperty(
   profile: PropertyProfile,
   vocabularyPropertyByIri: Map<string, OwlProperty>,
   labelForIri: (iri: string) => string,
+  preferredLanguages: string[],
 ): ExplorerProperty {
   const vocabularyProperty = firstReferenced(profile.profiledPropertyIri, vocabularyPropertyByIri);
   const rangeIris = isObjectPropertyProfile(profile)
@@ -221,16 +250,20 @@ function createProfileProperty(
 
   return {
     iri: profile.iri,
-    label: selectLocalizedString(profile.prefLabel) ?? labelForIri(profile.iri),
+    label: selectLocalizedString(profile.prefLabel, preferredLanguages) ?? labelForIri(profile.iri),
     kind: isObjectPropertyProfile(profile)
       ? "object"
       : isDatatypePropertyProfile(profile)
         ? "datatype"
         : "unknown",
     definition:
-      selectLocalizedString(profile.definition) ??
-      selectLocalizedString(vocabularyProperty?.description),
-    usageNote: selectLocalizedString(profile.usageNote),
+      selectLocalizedString(profile.definition, preferredLanguages) ??
+      (profile.reusesPropertyValue.some(
+        (reuse) => reuse.reusedAsPropertyIri === "http://www.w3.org/2004/02/skos/core#definition",
+      )
+        ? undefined
+        : selectLocalizedString(vocabularyProperty?.description, preferredLanguages)),
+    usageNote: selectLocalizedString(profile.usageNote, preferredLanguages),
     externalDocumentationUrl: profile.externalDocumentationUrl ?? undefined,
     domainIri: profile.domainIri || undefined,
     domainLabel: profile.domainIri ? labelForIri(profile.domainIri) : undefined,
@@ -248,18 +281,19 @@ function createProfileProperty(
 function createVocabularyProperty(
   property: OwlProperty,
   labelForIri: (iri: string) => string,
+  preferredLanguages: string[],
 ): ExplorerProperty {
   const rangeIris = property.range ? [property.range] : [];
   return {
     iri: property.iri,
-    label: selectLocalizedString(property.name) ?? labelForIri(property.iri),
+    label: selectLocalizedString(property.name, preferredLanguages) ?? labelForIri(property.iri),
     kind:
       property.type === OwlPropertyType.ObjectProperty
         ? "object"
         : property.type === OwlPropertyType.DatatypeProperty
           ? "datatype"
           : "unknown",
-    definition: selectLocalizedString(property.description),
+    definition: selectLocalizedString(property.description, preferredLanguages),
     domainIri: property.domain || undefined,
     domainLabel: property.domain ? labelForIri(property.domain) : undefined,
     rangeIris,
@@ -276,18 +310,22 @@ function createLabelIndex(
   properties: OwlProperty[],
   classProfiles: ClassProfile[],
   propertyProfiles: PropertyProfile[],
+  preferredLanguages: string[],
 ): Map<string, string> {
   const result = new Map<string, string>();
   for (const value of [...classes, ...properties]) {
-    result.set(value.iri, selectLocalizedString(value.name) ?? shortIriLabel(value.iri));
+    result.set(
+      value.iri,
+      selectLocalizedString(value.name, preferredLanguages) ?? shortIriLabel(value.iri),
+    );
   }
   for (const value of [...classProfiles, ...propertyProfiles]) {
     const referencedIri =
       "profiledClassIri" in value ? value.profiledClassIri[0] : value.profiledPropertyIri[0];
     result.set(
       value.iri,
-      selectLocalizedString(value.prefLabel) ??
-        (referencedIri ? result.get(referencedIri) : undefined) ??
+      selectLocalizedString(value.prefLabel, preferredLanguages) ??
+        (!("profiledClassIri" in value) && referencedIri ? result.get(referencedIri) : undefined) ??
         shortIriLabel(value.iri),
     );
   }

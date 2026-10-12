@@ -34,7 +34,7 @@ async function openSpecification() {
     const specification = await loadSpecificationFromUrl(url);
     state.setSpecification(specification);
     state.setDetailMode(detailMode.value);
-    await router.push(routes.specToSpec);
+    await router.push({ path: routes.specToSpec, query: { specificationUrl: url } });
   } catch (error) {
     state.setError(error instanceof Error ? error.message : "Unable to load specification");
   } finally {
@@ -106,7 +106,7 @@ async function selectDefaultSpecification(specification: DefaultSpecification) {
     </form>
 
     <div class="mode-row">
-      <span class="mode-label-text">Default mode</span>
+      <span class="mode-label-text">Display mode</span>
       <div class="mode-options">
         <label class="mode-radio">
           <input v-model="detailMode" type="radio" name="mode-inline" value="simple" />

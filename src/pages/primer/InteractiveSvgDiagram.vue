@@ -2,10 +2,11 @@
 /* global AbortController, DOMParser, Element, Event, HTMLElement, KeyboardEvent, SVGSVGElement, SVGTextElement, document, fetch, requestAnimationFrame, setTimeout, window */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import { matchDiagramTerm } from "./model/match-diagram-term";
+
 export interface InteractiveSvgTerm {
   iri: string;
   label: string;
-  aliases?: string[];
 }
 
 export interface InteractiveSvgSelection {
@@ -211,26 +212,31 @@ function diagramNodeCandidates(svg: SVGSVGElement): HTMLElement[] {
     .filter((element): element is HTMLElement => element !== null);
 }
 
-function identifyTerm(element: HTMLElement, terms: InteractiveSvgTerm[]) {
-  const searchable = normalize(
-    [
-      element.textContent,
-      element.id,
-      element.dataset.iri,
-      element.dataset.id,
-      element.getAttribute("href"),
-    ].join(" "),
+function diagramHeading(element: HTMLElement): string {
+  const heading = element.querySelector<HTMLElement>(".drag-handle");
+  if (heading) {
+    // Dataspecer puts the label in the first row and profile-of information below it.
+    return cleanText(heading.firstElementChild?.textContent ?? heading.textContent);
+  }
+  return (
+    cleanText(element.querySelector("title")?.textContent) ||
+    cleanText(element.querySelector("text")?.textContent)
   );
+}
 
-  const tokens = terms.flatMap((term) =>
-    [term.label, term.iri, iriLocalName(term.iri), ...(term.aliases ?? [])]
-      .flatMap((value) => [value, iriLocalName(value)])
-      .map(normalize)
-      .filter((token) => token.length >= 4)
-      .map((token) => ({ term, token })),
+function identifyTerm(element: HTMLElement, terms: InteractiveSvgTerm[]) {
+  return matchDiagramTerm(
+    [
+      element.dataset.iri ?? "",
+      element.dataset.id ?? "",
+      element.id,
+      element.getAttribute("href") ?? "",
+      element.getAttribute("xlink:href") ?? "",
+      cleanText(element.querySelector(".overflow-x-clip.text-gray-500")?.textContent),
+    ],
+    diagramHeading(element),
+    terms,
   );
-  tokens.sort((left, right) => right.token.length - left.token.length);
-  return tokens.find(({ token }) => searchable.includes(token))?.term;
 }
 
 function updateSelection() {
@@ -290,17 +296,6 @@ function validDimension(value?: number): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-function normalize(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\u00a0/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, "");
-}
-
-function iriLocalName(value: string): string {
-  return value.replace(/\/$/, "").split(/[/#:]/).pop() ?? value;
-}
-
 function semanticSelection(term: InteractiveSvgTerm): InteractiveSvgSelection {
   return {
     key: term.iri,
@@ -312,10 +307,7 @@ function semanticSelection(term: InteractiveSvgTerm): InteractiveSvgSelection {
 
 function svgSelection(element: HTMLElement, index: number): InteractiveSvgSelection | undefined {
   const heading = element.querySelector<HTMLElement>(".drag-handle");
-  const label =
-    cleanText(heading?.textContent) ||
-    cleanText(element.querySelector("title")?.textContent) ||
-    cleanText(element.textContent);
+  const label = diagramHeading(element) || cleanText(element.textContent);
   if (!label) return undefined;
 
   const compactIri = cleanText(

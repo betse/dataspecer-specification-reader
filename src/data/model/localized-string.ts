@@ -33,10 +33,19 @@ export function selectLocalizedString(
   }
 
   for (const language of preferredLanguages) {
-    if (value[language]) {
-      return value[language];
-    }
+    const entry = Object.entries(value).find(
+      ([tag, text]) => tag.toLowerCase() === language.toLowerCase() && Boolean(text),
+    );
+    if (entry) return entry[1];
   }
 
-  return Object.values(value)[0];
+  return Object.values(value).find(Boolean);
+}
+
+/** Per-publication preferences; never changes global state or stored translations. */
+export function preferredContentLanguages(language?: string): string[] {
+  const tag = language?.trim().toLowerCase();
+  return [
+    ...new Set([...(tag ? [tag, tag.split("-")[0]!] : []), ...defaultPreferredLanguages, ""]),
+  ];
 }
