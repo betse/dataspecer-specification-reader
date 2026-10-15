@@ -114,6 +114,7 @@ test("creates class and property profile views with vocabulary fallbacks", () =>
   assert.deepEqual(datasetProfile.properties[0], {
     iri: titleProfileIri,
     label: "Title",
+    labelDerivedFromIri: false,
     kind: "datatype",
     definition: "A name given to a resource.",
     usageNote: undefined,
@@ -322,3 +323,52 @@ function applicationProfile(): ApplicationProfile {
     ],
   };
 }
+
+test("derives readable property labels across classes without changing IRIs or class labels", () => {
+  const ap = applicationProfile();
+  const base = "https://mff-uk.github.io/specifications/dcat-ap#";
+  const cases = [
+    ["Catalogue", "dataset", "dataset"],
+    ["Catalogue", "applicableLegislation", "applicable legislation"],
+    ["Catalogue", "homepage", "homepage"],
+    ["Catalogue", "record", "record"],
+    ["Catalogue", "service", "service"],
+    ["DataService", "endpointURL", "endpoint URL"],
+    ["Distribution", "access_url", "access url"],
+  ];
+  ap.classProfiles = [...new Set(cases.map(([owner]) => owner))].map((owner) => ({
+    ...ap.classProfiles[0]!,
+    iri: base + owner,
+    prefLabel: {},
+  }));
+  const original = ap.objectPropertyProfiles[0]!;
+  ap.objectPropertyProfiles = cases.map(([owner, property]) => ({
+    ...original,
+    iri: base + owner + "." + property,
+    domainIri: base + owner,
+    prefLabel: {},
+    profiledPropertyIri: [],
+  }));
+  const semantic = semanticSpecification({ applicationProfiles: [ap] });
+  const before = JSON.stringify(semantic);
+  const model = createSpecificationExplorer(specification(), semantic);
+  for (const [owner, property, label] of cases) {
+    const iri = base + owner + "." + property;
+    const result = model.properties.find((p) => p.iri === iri)!;
+    assert.equal(result.label, label);
+    assert.equal(result.labelDerivedFromIri, true);
+    assert.ok(
+      model.classes
+        .find((c) => c.iri === base + owner)!
+        .properties.some((p) => p.iri === iri && p.label === label),
+    );
+  }
+  assert.equal(model.classes.find((c) => c.iri === base + "DataService")!.label, "DataService");
+  assert.equal(JSON.stringify(semantic), before);
+  ap.objectPropertyProfiles[0]!.prefLabel = { en: "Published label: Catalogue.dataset" };
+  const labelled = createSpecificationExplorer(specification(), semantic).properties.find(
+    (p) => p.iri === ap.objectPropertyProfiles[0]!.iri,
+  )!;
+  assert.equal(labelled.label, "Published label: Catalogue.dataset");
+  assert.equal(labelled.labelDerivedFromIri, false);
+});

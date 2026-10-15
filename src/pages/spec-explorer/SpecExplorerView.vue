@@ -1258,6 +1258,14 @@ function safeIdentifier(value?: string): string {
                             <label>Requirement</label>
                             <div class="dv">{{ property.requirement ?? "—" }}</div>
                           </div>
+                          <div v-if="property.labelDerivedFromIri" class="df full">
+                            <label>Label source</label>
+                            <div class="dv muted">
+                              Derived from the property identifier because no published label was
+                              available in the loaded data. This is not a translated or retrieved
+                              label.
+                            </div>
+                          </div>
                           <div v-if="property.definition" class="df full">
                             <label>Definition</label>
                             <div class="dv muted">{{ property.definition }}</div>

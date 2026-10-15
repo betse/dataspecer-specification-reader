@@ -1,3 +1,4 @@
+import { propertyLabelFromIri } from "./property-label";
 import {
   selectLocalizedString,
   preferredContentLanguages,
@@ -70,6 +71,8 @@ export type ExplorerPropertyKind = "object" | "datatype" | "unknown";
 export type ExplorerRequirement = "mandatory" | "recommended" | "optional";
 
 export interface ExplorerProperty {
+  /** True when no published label was available in the loaded data. */
+  labelDerivedFromIri?: boolean;
   reusedValues?: ReusedValueDetail[];
   iri: string;
   label: string;
@@ -242,6 +245,9 @@ function createProfileProperty(
   preferredLanguages: string[],
 ): ExplorerProperty {
   const vocabularyProperty = firstReferenced(profile.profiledPropertyIri, vocabularyPropertyByIri);
+  const publishedLabel =
+    selectLocalizedString(profile.prefLabel, preferredLanguages) ??
+    selectLocalizedString(vocabularyProperty?.name, preferredLanguages);
   const rangeIris = isObjectPropertyProfile(profile)
     ? profile.rangeClassIri
     : isDatatypePropertyProfile(profile)
@@ -250,7 +256,8 @@ function createProfileProperty(
 
   return {
     iri: profile.iri,
-    label: selectLocalizedString(profile.prefLabel, preferredLanguages) ?? labelForIri(profile.iri),
+    label: publishedLabel ?? propertyLabelFromIri(profile.iri, profile.domainIri),
+    labelDerivedFromIri: publishedLabel === undefined,
     kind: isObjectPropertyProfile(profile)
       ? "object"
       : isDatatypePropertyProfile(profile)
@@ -283,10 +290,12 @@ function createVocabularyProperty(
   labelForIri: (iri: string) => string,
   preferredLanguages: string[],
 ): ExplorerProperty {
+  const publishedLabel = selectLocalizedString(property.name, preferredLanguages);
   const rangeIris = property.range ? [property.range] : [];
   return {
     iri: property.iri,
-    label: selectLocalizedString(property.name, preferredLanguages) ?? labelForIri(property.iri),
+    label: publishedLabel ?? propertyLabelFromIri(property.iri, property.domain),
+    labelDerivedFromIri: publishedLabel === undefined,
     kind:
       property.type === OwlPropertyType.ObjectProperty
         ? "object"
@@ -313,20 +322,34 @@ function createLabelIndex(
   preferredLanguages: string[],
 ): Map<string, string> {
   const result = new Map<string, string>();
-  for (const value of [...classes, ...properties]) {
+  for (const value of classes) {
     result.set(
       value.iri,
       selectLocalizedString(value.name, preferredLanguages) ?? shortIriLabel(value.iri),
     );
   }
-  for (const value of [...classProfiles, ...propertyProfiles]) {
-    const referencedIri =
-      "profiledClassIri" in value ? value.profiledClassIri[0] : value.profiledPropertyIri[0];
+  for (const value of properties) {
+    result.set(
+      value.iri,
+      selectLocalizedString(value.name, preferredLanguages) ??
+        propertyLabelFromIri(value.iri, value.domain),
+    );
+  }
+  for (const value of classProfiles) {
+    result.set(
+      value.iri,
+      selectLocalizedString(value.prefLabel, preferredLanguages) ?? shortIriLabel(value.iri),
+    );
+  }
+  for (const value of propertyProfiles) {
+    const vocabularyProperty = value.profiledPropertyIri.flatMap((iri) =>
+      properties.filter((property) => property.iri === iri),
+    )[0];
     result.set(
       value.iri,
       selectLocalizedString(value.prefLabel, preferredLanguages) ??
-        (!("profiledClassIri" in value) && referencedIri ? result.get(referencedIri) : undefined) ??
-        shortIriLabel(value.iri),
+        selectLocalizedString(vocabularyProperty?.name, preferredLanguages) ??
+        propertyLabelFromIri(value.iri, value.domainIri),
     );
   }
   return result;
