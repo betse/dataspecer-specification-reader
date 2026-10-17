@@ -1,0 +1,58 @@
+/* Shared, opt-in loading treatment. No extra data-loading delay. */
+.semantic-reveal-enter-active {
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
+}
+
+.semantic-reveal-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.semantic-content-ready {
+  animation: semantic-reveal 200ms ease-out;
+}
+
+.semantic-loading-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 0.5em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.12em;
+  animation: semantic-spin 800ms linear infinite;
+}
+
+@keyframes semantic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes semantic-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .semantic-reveal-enter-active {
+    transition: none;
+  }
+  .semantic-reveal-enter-from {
+    opacity: 1;
+    transform: none;
+  }
+  .semantic-content-ready,
+  .semantic-loading-spinner {
+    animation: none;
+  }
+}

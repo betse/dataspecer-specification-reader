@@ -95,7 +95,7 @@ function closeSettingsOutside(event: unknown) {
       </RouterLink>
 
       <nav class="tb-nav" aria-label="Main navigation">
-        <template v-if="state.specification">
+        <template v-if="state.specification && route.path !== routes.landing">
           <RouterLink :to="routes.specToSpec">Spec-to-Spec</RouterLink>
           <RouterLink :to="routes.primer">Primer</RouterLink>
           <RouterLink :to="routes.specExplorer">Explorer</RouterLink>

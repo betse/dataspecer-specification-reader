@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import {
+  defaultClassSelection,
+  showRequirementColumn,
+  sortClassesByRole,
+} from "./model/explorer-defaults";
+import "../../shared/styles/semantic-loading.css";
 import { computed, nextTick, reactive, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/router";
@@ -155,7 +161,7 @@ function includeReferencedClasses() {
 
 const filteredClasses = computed(() => {
   const query = sidebarSearch.value.trim().toLocaleLowerCase();
-  return (explorer.value?.classes ?? []).filter((value) => {
+  return sortClassesByRole(explorer.value?.classes ?? []).filter((value) => {
     const matchesRole = roleFilter.value === "all" || value.role === roleFilter.value;
     const matchesSearch =
       !query ||
@@ -211,7 +217,7 @@ watch(
   () => explorer.value?.classes,
   (classes) => {
     if (!classes) return;
-    selectedClassIris.value = classes.slice(0, 2).map((value) => value.iri);
+    selectedClassIris.value = defaultClassSelection(classes);
   },
 );
 
@@ -219,7 +225,8 @@ watch(
   () => state.detailMode,
   () => {
     for (const value of Object.values(panelStates)) {
-      value.columnOverrides = {};
+      const requirement = value.columnOverrides.requirement;
+      value.columnOverrides = requirement === undefined ? {} : { requirement };
     }
   },
 );
@@ -240,6 +247,11 @@ function panelState(iri: string): PanelState {
 function isColumnVisible(classIri: string, column: ExplorerColumn): boolean {
   if (column.always) return true;
   const override = panelState(classIri).columnOverrides[column.id];
+  if (column.id === "requirement") {
+    const properties =
+      explorer.value?.classes.find((value) => value.iri === classIri)?.properties ?? [];
+    return showRequirementColumn(properties, override);
+  }
   return override ?? (state.detailMode === "simple" ? column.simple : true);
 }
 
@@ -584,759 +596,783 @@ function safeIdentifier(value?: string): string {
 </script>
 
 <template>
-  <div class="explorer-shell">
-    <section v-if="!state.specification" class="load-state">
-      <h1>No specification loaded</h1>
-      <p>Load a published specification before opening the explorer.</p>
-      <RouterLink :to="routes.landing">Load specification</RouterLink>
-    </section>
-    <section v-else-if="isLoading" class="load-state" aria-live="polite">
-      <h1>Loading semantic data…</h1>
-      <p>Reading vocabulary and application-profile artifacts.</p>
-    </section>
-    <section v-else-if="errorMessage" class="load-state error" role="alert">
-      <h1>Unable to load the explorer</h1>
-      <p>{{ errorMessage }}</p>
-    </section>
-    <section v-else-if="explorer" class="layout">
-      <aside class="sidebar">
-        <div v-if="activeView === 'list' || codeSidebarTab === 'classes'" class="sb-head">
-          <div class="sb-section-label">Search</div>
-          <div class="search-wrap">
-            <svg
-              class="search-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              v-model="sidebarSearch"
-              class="search-input"
-              type="search"
-              placeholder="Search classes or properties…"
-              aria-label="Find classes by class or property label or IRI"
-            />
-          </div>
-          <div>
-            <div class="sb-section-label">Class role</div>
-            <div class="role-chips">
-              <button
-                v-for="role in ['all', 'main', 'supportive'] as const"
-                :key="role"
-                class="role-chip"
-                :class="{ [`on-${role}`]: roleFilter === role }"
-                type="button"
-                @click="roleFilter = role"
+  <div class="explorer-shell" :aria-busy="isLoading">
+    <Transition name="semantic-reveal" mode="out-in">
+      <section v-if="!state.specification" key="empty" class="load-state">
+        <h1>No specification loaded</h1>
+        <p>Load a published specification before opening the explorer.</p>
+        <RouterLink :to="routes.landing">Load specification</RouterLink>
+      </section>
+      <section v-else-if="isLoading" key="loading" class="load-state" role="status">
+        <h1>
+          <span class="semantic-loading-spinner" aria-hidden="true"></span>Loading semantic data…
+        </h1>
+        <p>Reading vocabulary and application-profile artifacts.</p>
+      </section>
+      <section v-else-if="errorMessage" key="error" class="load-state error" role="alert">
+        <h1>Unable to load the explorer</h1>
+        <p>{{ errorMessage }}</p>
+      </section>
+      <section v-else-if="explorer" key="content" class="layout">
+        <aside class="sidebar">
+          <div v-if="activeView === 'list' || codeSidebarTab === 'classes'" class="sb-head">
+            <div class="sb-section-label">Search</div>
+            <div class="search-wrap">
+              <svg
+                class="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
               >
-                {{ role[0].toUpperCase() + role.slice(1) }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div v-else class="sb-head code-property-controls">
-          <label for="code-property-search" class="sb-section-label">Search</label>
-          <div class="search-wrap">
-            <svg
-              class="search-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              id="code-property-search"
-              v-model="codePropertySearch"
-              class="search-input"
-              type="search"
-              placeholder="Search properties…"
-            />
-          </div>
-          <label for="code-requirement" class="sb-section-label">Requirement</label>
-          <select id="code-requirement" v-model="codeRequirement" class="search-input">
-            <option value="all">All</option>
-            <option value="mandatory">Mandatory</option>
-            <option value="recommended">Recommended</option>
-            <option value="optional">Optional</option>
-            <option value="unspecified">Unspecified</option>
-          </select>
-        </div>
-        <div
-          v-if="activeView === 'code'"
-          class="code-sidebar-tabs"
-          role="group"
-          aria-label="Code selection"
-        >
-          <button
-            v-for="tab in ['classes', 'properties'] as const"
-            :key="tab"
-            class="code-sidebar-tab"
-            :class="{ active: codeSidebarTab === tab }"
-            :aria-pressed="codeSidebarTab === tab"
-            type="button"
-            @click="codeSidebarTab = tab"
-          >
-            {{ tab === "classes" ? "Classes" : "Properties" }}
-          </button>
-        </div>
-        <template v-if="activeView === 'list' || codeSidebarTab === 'classes'">
-          <div v-if="activeView === 'list'" class="class-list-heading">Classes</div>
-          <p id="class-selection-hint" class="selection-hint">
-            Click to select one. Shift+click to add. Use checkboxes to toggle.
-          </p>
-          <div class="class-list">
-            <div
-              v-for="item in filteredClasses"
-              :key="item.iri"
-              class="class-item"
-              :class="{ selected: selectedClassIris.includes(item.iri) }"
-            >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
               <input
-                class="ci-check"
-                type="checkbox"
-                :checked="selectedClassIris.includes(item.iri)"
-                :aria-label="'Include ' + item.label + ' in active context'"
-                @change="toggleClass(item.iri)"
+                v-model="sidebarSearch"
+                class="search-input"
+                type="search"
+                placeholder="Search classes or properties…"
+                aria-label="Find classes by class or property label or IRI"
               />
-              <button
-                class="class-select"
-                type="button"
-                :aria-pressed="selectedClassIris.includes(item.iri)"
-                aria-describedby="class-selection-hint"
-                @click="selectClass(item.iri, $event.shiftKey)"
-              >
-                <span class="ci-badge" :class="item.role">{{ roleLabel(item) }}</span>
-                <span class="ci-name">{{ item.label }}</span>
-                <span class="ci-count">{{ item.properties.length }}</span>
-              </button>
             </div>
-            <p v-if="!filteredClasses.length" class="class-list-empty">No matching classes.</p>
+            <div>
+              <div class="sb-section-label">Class role</div>
+              <div class="role-chips">
+                <button
+                  v-for="role in ['all', 'main', 'supportive'] as const"
+                  :key="role"
+                  class="role-chip"
+                  :class="{ [`on-${role}`]: roleFilter === role }"
+                  type="button"
+                  @click="roleFilter = role"
+                >
+                  {{ role[0].toUpperCase() + role.slice(1) }}
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="sb-footer">
-            <button class="sel-btn" type="button" @click="selectAll">Select all</button>
-            <button class="sel-btn" type="button" @click="clearSelection">Clear</button>
+          <div v-else class="sb-head code-property-controls">
+            <label for="code-property-search" class="sb-section-label">Search</label>
+            <div class="search-wrap">
+              <svg
+                class="search-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                id="code-property-search"
+                v-model="codePropertySearch"
+                class="search-input"
+                type="search"
+                placeholder="Search properties…"
+              />
+            </div>
+            <label for="code-requirement" class="sb-section-label">Requirement</label>
+            <select id="code-requirement" v-model="codeRequirement" class="search-input">
+              <option value="all">All</option>
+              <option value="mandatory">Mandatory</option>
+              <option value="recommended">Recommended</option>
+              <option value="optional">Optional</option>
+              <option value="unspecified">Unspecified</option>
+            </select>
           </div>
-        </template>
-        <template v-else>
-          <p class="selection-hint">
-            Choose properties to include in code. Filters only narrow this checklist.
-          </p>
-          <div class="class-list">
-            <section v-for="item in codePropertyGroups" :key="item.iri" class="code-property-group">
-              <h3 :title="item.iri">{{ item.label }}</h3>
-              <label
-                v-for="property in item.properties"
-                :key="property.iri"
-                class="code-property-option"
-                :title="property.iri"
+          <div
+            v-if="activeView === 'code'"
+            class="code-sidebar-tabs"
+            role="group"
+            aria-label="Code selection"
+          >
+            <button
+              v-for="tab in ['classes', 'properties'] as const"
+              :key="tab"
+              class="code-sidebar-tab"
+              :class="{ active: codeSidebarTab === tab }"
+              :aria-pressed="codeSidebarTab === tab"
+              type="button"
+              @click="codeSidebarTab = tab"
+            >
+              {{ tab === "classes" ? "Classes" : "Properties" }}
+            </button>
+          </div>
+          <template v-if="activeView === 'list' || codeSidebarTab === 'classes'">
+            <div v-if="activeView === 'list'" class="class-list-heading">Classes</div>
+            <p id="class-selection-hint" class="selection-hint">
+              Click to select one. Shift+click to add. Use checkboxes to toggle.
+            </p>
+            <div class="class-list">
+              <div
+                v-for="item in filteredClasses"
+                :key="item.iri"
+                class="class-item"
+                :class="{ selected: selectedClassIris.includes(item.iri) }"
               >
                 <input
+                  class="ci-check"
                   type="checkbox"
-                  :checked="isCodePropertyIncluded(item.iri, property.iri)"
-                  :aria-label="'Include ' + property.label + ' in ' + item.label + ' code'"
-                  @change="toggleCodeProperty(item.iri, property.iri)"
+                  :checked="selectedClassIris.includes(item.iri)"
+                  :aria-label="'Include ' + item.label + ' in active context'"
+                  @change="toggleClass(item.iri)"
                 />
-                <span
-                  >{{ property.label
-                  }}<small>{{ property.requirement ?? "Unspecified" }}</small></span
+                <button
+                  class="class-select"
+                  type="button"
+                  :aria-pressed="selectedClassIris.includes(item.iri)"
+                  aria-describedby="class-selection-hint"
+                  @click="selectClass(item.iri, $event.shiftKey)"
                 >
-              </label>
-            </section>
-            <p v-if="!selectedClasses.length" class="class-list-empty">
-              Select classes in the Classes tab first.
+                  <span class="ci-badge" :class="item.role">{{ roleLabel(item) }}</span>
+                  <span class="ci-name">{{ item.label }}</span>
+                  <span class="ci-count">{{ item.properties.length }}</span>
+                </button>
+              </div>
+              <p v-if="!filteredClasses.length" class="class-list-empty">No matching classes.</p>
+            </div>
+            <div class="sb-footer">
+              <button class="sel-btn" type="button" @click="selectAll">Select all</button>
+              <button class="sel-btn" type="button" @click="clearSelection">Clear</button>
+            </div>
+          </template>
+          <template v-else>
+            <p class="selection-hint">
+              Choose properties to include in code. Filters only narrow this checklist.
             </p>
-            <p v-else-if="!selectedPropertyCount" class="class-list-empty">
-              No properties are available for the selected classes.
-            </p>
-            <p v-else-if="!codePropertyGroups.length" class="class-list-empty">
-              No properties match your search or filters.
-            </p>
-          </div>
-          <div class="sb-footer code-property-actions">
-            <span>Apply to all selected classes, regardless of filters:</span>
+            <div class="class-list">
+              <section
+                v-for="item in codePropertyGroups"
+                :key="item.iri"
+                class="code-property-group"
+              >
+                <h3 :title="item.iri">{{ item.label }}</h3>
+                <label
+                  v-for="property in item.properties"
+                  :key="property.iri"
+                  class="code-property-option"
+                  :title="property.iri"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="isCodePropertyIncluded(item.iri, property.iri)"
+                    :aria-label="'Include ' + property.label + ' in ' + item.label + ' code'"
+                    @change="toggleCodeProperty(item.iri, property.iri)"
+                  />
+                  <span
+                    >{{ property.label
+                    }}<small>{{ property.requirement ?? "Unspecified" }}</small></span
+                  >
+                </label>
+              </section>
+              <p v-if="!selectedClasses.length" class="class-list-empty">
+                Select classes in the Classes tab first.
+              </p>
+              <p v-else-if="!selectedPropertyCount" class="class-list-empty">
+                No properties are available for the selected classes.
+              </p>
+              <p v-else-if="!codePropertyGroups.length" class="class-list-empty">
+                No properties match your search or filters.
+              </p>
+            </div>
+            <div class="sb-footer code-property-actions">
+              <span>Apply to all selected classes, regardless of filters:</span>
+              <button
+                class="sel-btn"
+                type="button"
+                :disabled="!selectedClasses.length"
+                @click="applyCodePropertyPreset(false)"
+              >
+                Include all
+              </button>
+              <button
+                class="sel-btn"
+                type="button"
+                :disabled="!selectedClasses.length"
+                @click="applyCodePropertyPreset(true)"
+              >
+                Include mandatory only
+              </button>
+            </div>
+          </template>
+        </aside>
+
+        <main class="main">
+          <div class="view-tabs">
             <button
-              class="sel-btn"
+              class="view-tab"
+              :class="{ active: activeView === 'list' }"
               type="button"
-              :disabled="!selectedClasses.length"
-              @click="applyCodePropertyPreset(false)"
+              @click="activeView = 'list'"
             >
-              Include all
+              <svg viewBox="0 0 24 24">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+              List view
             </button>
             <button
-              class="sel-btn"
+              class="view-tab"
+              :class="{ active: activeView === 'code' }"
               type="button"
-              :disabled="!selectedClasses.length"
-              @click="applyCodePropertyPreset(true)"
+              @click="activeView = 'code'"
             >
-              Include mandatory only
+              <svg viewBox="0 0 24 24">
+                <polyline points="16,18 22,12 16,6" />
+                <polyline points="8,6 2,12 8,18" />
+              </svg>
+              Code view
             </button>
+            <div class="vt-spacer"></div>
           </div>
-        </template>
-      </aside>
 
-      <main class="main">
-        <div class="view-tabs">
-          <button
-            class="view-tab"
-            :class="{ active: activeView === 'list' }"
-            type="button"
-            @click="activeView = 'list'"
-          >
-            <svg viewBox="0 0 24 24">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-            List view
-          </button>
-          <button
-            class="view-tab"
-            :class="{ active: activeView === 'code' }"
-            type="button"
-            @click="activeView = 'code'"
-          >
-            <svg viewBox="0 0 24 24">
-              <polyline points="16,18 22,12 16,6" />
-              <polyline points="8,6 2,12 8,18" />
-            </svg>
-            Code view
-          </button>
-          <div class="vt-spacer"></div>
-        </div>
-
-        <div class="ctx-bar">
-          <span class="ctx-label">Viewing</span>
-          <div class="ctx-tags">
-            <span v-if="!selectedClasses.length" class="ctx-empty"
-              >Select classes from the sidebar to begin</span
-            >
-            <span v-for="item in selectedClasses" v-else :key="item.iri" class="ctx-tag">
-              {{ item.label }} <button type="button" @click="toggleClass(item.iri)">×</button>
+          <div class="ctx-bar">
+            <span class="ctx-label">Viewing</span>
+            <div class="ctx-tags">
+              <span v-if="!selectedClasses.length" class="ctx-empty"
+                >Select classes from the sidebar to begin</span
+              >
+              <span v-for="item in selectedClasses" v-else :key="item.iri" class="ctx-tag">
+                {{ item.label }} <button type="button" @click="toggleClass(item.iri)">×</button>
+              </span>
+            </div>
+            <span v-if="selectedClasses.length" class="ctx-count">
+              {{ selectedPropertyCount }} properties · {{ selectedClasses.length }} classes
             </span>
           </div>
-          <span v-if="selectedClasses.length" class="ctx-count">
-            {{ selectedPropertyCount }} properties · {{ selectedClasses.length }} classes
-          </span>
-        </div>
 
-        <div
-          v-if="activeView === 'list'"
-          class="panels-scroll"
-          @click="openColumnPickerIri = undefined"
-        >
-          <!-- <details v-if="explorer.warnings.length" class="warnings">
+          <div
+            v-if="activeView === 'list'"
+            class="panels-scroll"
+            @click="openColumnPickerIri = undefined"
+          >
+            <!-- <details v-if="explorer.warnings.length" class="warnings">
             <summary>{{ explorer.warnings.length }} data loading warnings</summary>
             <ul>
               <li v-for="warning in explorer.warnings" :key="warning">{{ warning }}</li>
             </ul>
           </details> -->
-          <div v-if="!selectedClasses.length" class="no-selection">
-            <svg viewBox="0 0 24 24">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <line x1="3" y1="9" x2="21" y2="9" />
-              <line x1="9" y1="21" x2="9" y2="9" />
-            </svg>
-            <p>No classes selected</p>
-            <small>Choose one or more from the sidebar — each gets its own table</small>
-          </div>
-
-          <article
-            v-for="item in selectedClasses"
-            :key="item.iri"
-            :id="classPanelId(item.iri)"
-            tabindex="-1"
-            class="class-panel"
-          >
-            <header class="panel-header">
-              <div class="panel-title-wrap">
-                <h2 class="panel-class-name">{{ item.label }}</h2>
-                <div class="panel-iri">{{ item.iri }}</div>
-              </div>
-              <button
-                class="panel-detail-btn"
-                :class="{ expanded: panelState(item.iri).detailsOpen }"
-                type="button"
-                @click="panelState(item.iri).detailsOpen = !panelState(item.iri).detailsOpen"
-              >
-                Details
-                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
-              </button>
-            </header>
-            <div class="class-meta">
-              <span class="meta-pill" :class="`role-${item.role ?? 'class'}`">{{
-                roleLabel(item)
-              }}</span>
-              <span v-for="label in profileLabels(item)" :key="label" class="meta-pill profiled"
-                >profiles {{ label }}</span
-              >
+            <div v-if="!selectedClasses.length" class="no-selection">
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="9" x2="21" y2="9" />
+                <line x1="9" y1="21" x2="9" y2="9" />
+              </svg>
+              <p>No classes selected</p>
+              <small>Choose one or more from the sidebar — each gets its own table</small>
             </div>
-            <div class="panel-extra" :class="{ open: panelState(item.iri).detailsOpen }">
-              <div class="extra-inner">
-                <div class="extra-grid">
-                  <div
-                    v-for="(reuse, index) in item.reusedValues"
-                    :key="index"
-                    class="extra-field ef-full"
-                  >
-                    <label
-                      >{{
-                        reuse.field === "prefLabel"
-                          ? "Label"
-                          : reuse.field === "usageNote"
-                            ? "Usage note"
-                            : "Definition"
-                      }}
-                      source</label
+
+            <article
+              v-for="item in selectedClasses"
+              :key="item.iri"
+              :id="classPanelId(item.iri)"
+              tabindex="-1"
+              class="class-panel"
+            >
+              <header class="panel-header">
+                <div class="panel-title-wrap">
+                  <h2 class="panel-class-name">{{ item.label }}</h2>
+                  <div class="panel-iri">{{ item.iri }}</div>
+                </div>
+                <button
+                  class="panel-detail-btn"
+                  :class="{ expanded: panelState(item.iri).detailsOpen }"
+                  type="button"
+                  @click="panelState(item.iri).detailsOpen = !panelState(item.iri).detailsOpen"
+                >
+                  Details
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9" /></svg>
+                </button>
+              </header>
+              <div class="class-meta">
+                <span class="meta-pill" :class="`role-${item.role ?? 'class'}`">{{
+                  roleLabel(item)
+                }}</span>
+                <span v-for="label in profileLabels(item)" :key="label" class="meta-pill profiled"
+                  >profiles {{ label }}</span
+                >
+              </div>
+              <div class="panel-extra" :class="{ open: panelState(item.iri).detailsOpen }">
+                <div class="extra-inner">
+                  <div class="extra-grid">
+                    <div
+                      v-for="(reuse, index) in item.reusedValues"
+                      :key="index"
+                      class="extra-field ef-full"
                     >
-                    <div class="ef-val">
-                      <span v-if="reuse.resolved">Reused from </span>
-                      <span v-else
-                        >Reused value unavailable. External vocabularies are not fetched; internal
-                        sources may be missing or inaccessible. Source:
-                      </span>
-                      <a :href="reuse.sourceIri" target="_blank" rel="noopener noreferrer">{{
-                        reuse.sourceIri
-                      }}</a>
+                      <label
+                        >{{
+                          reuse.field === "prefLabel"
+                            ? "Label"
+                            : reuse.field === "usageNote"
+                              ? "Usage note"
+                              : "Definition"
+                        }}
+                        source</label
+                      >
+                      <div class="ef-val">
+                        <span v-if="reuse.resolved">Reused from </span>
+                        <span v-else
+                          >Reused value unavailable. External vocabularies are not fetched; internal
+                          sources may be missing or inaccessible. Source:
+                        </span>
+                        <a :href="reuse.sourceIri" target="_blank" rel="noopener noreferrer">{{
+                          reuse.sourceIri
+                        }}</a>
+                      </div>
+                    </div>
+                    <div
+                      v-if="
+                        !item.definition &&
+                        !item.usageNote &&
+                        !item.backwardsAssociations.length &&
+                        !item.reusedValues?.length
+                      "
+                      class="extra-field ef-full"
+                    >
+                      No additional details are available in the loaded artifacts.
+                    </div>
+                    <div v-if="item.definition" class="extra-field ef-full">
+                      <label>Definition</label>
+                      <div class="ef-val">{{ item.definition }}</div>
+                    </div>
+                    <div v-if="item.usageNote" class="extra-field ef-full">
+                      <label>Usage note</label>
+                      <div class="ef-val">{{ item.usageNote }}</div>
+                    </div>
+                    <div v-if="item.backwardsAssociations.length" class="extra-field">
+                      <label>Backwards associations</label>
+                      <ul class="back-list">
+                        <li
+                          v-for="association in item.backwardsAssociations"
+                          :key="association.propertyIri + association.sourceClassIri"
+                        >
+                          <strong>{{ association.sourceClassLabel }}</strong> ·
+                          {{ association.propertyLabel }}
+                        </li>
+                      </ul>
                     </div>
                   </div>
-                  <div
-                    v-if="
-                      !item.definition &&
-                      !item.usageNote &&
-                      !item.backwardsAssociations.length &&
-                      !item.reusedValues?.length
-                    "
-                    class="extra-field ef-full"
-                  >
-                    No additional details are available in the loaded artifacts.
-                  </div>
-                  <div v-if="item.definition" class="extra-field ef-full">
-                    <label>Definition</label>
-                    <div class="ef-val">{{ item.definition }}</div>
-                  </div>
-                  <div v-if="item.usageNote" class="extra-field ef-full">
-                    <label>Usage note</label>
-                    <div class="ef-val">{{ item.usageNote }}</div>
-                  </div>
-                  <div v-if="item.backwardsAssociations.length" class="extra-field">
-                    <label>Backwards associations</label>
-                    <ul class="back-list">
-                      <li
-                        v-for="association in item.backwardsAssociations"
-                        :key="association.propertyIri + association.sourceClassIri"
-                      >
-                        <strong>{{ association.sourceClassLabel }}</strong> ·
-                        {{ association.propertyLabel }}
-                      </li>
-                    </ul>
-                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="panel-toolbar">
-              <div class="filter-group">
-                <span class="filter-label">Requirement</span>
-                <select v-model="panelState(item.iri).requirement" class="filter-select">
-                  <option value="">All</option>
-                  <option value="mandatory">Mandatory</option>
-                  <option value="recommended">Recommended</option>
-                  <option value="optional">Optional</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <span class="filter-label">Value type</span>
-                <select v-model="panelState(item.iri).propertyKind" class="filter-select">
-                  <option value="">All</option>
-                  <option value="object">Object</option>
-                  <option value="datatype">Datatype</option>
-                  <option value="unknown">Unknown</option>
-                </select>
-              </div>
-              <label class="filter-group">
-                <span class="filter-label">Range</span>
-                <select
-                  v-model="panelState(item.iri).rangeIri"
-                  class="filter-select range-select"
-                  :title="panelState(item.iri).rangeIri || 'All ranges'"
-                >
-                  <option value="">All ranges</option>
-                  <option
-                    v-for="range in rangeOptions(item)"
-                    :key="range.iri"
-                    :value="range.iri"
-                    :title="range.iri"
+              <div class="panel-toolbar">
+                <div class="filter-group">
+                  <span class="filter-label">Requirement</span>
+                  <select v-model="panelState(item.iri).requirement" class="filter-select">
+                    <option value="">All</option>
+                    <option value="mandatory">Mandatory</option>
+                    <option value="recommended">Recommended</option>
+                    <option value="optional">Optional</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <span class="filter-label">Value type</span>
+                  <select v-model="panelState(item.iri).propertyKind" class="filter-select">
+                    <option value="">All</option>
+                    <option value="object">Object</option>
+                    <option value="datatype">Datatype</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </div>
+                <label class="filter-group">
+                  <span class="filter-label">Range</span>
+                  <select
+                    v-model="panelState(item.iri).rangeIri"
+                    class="filter-select range-select"
+                    :title="panelState(item.iri).rangeIri || 'All ranges'"
                   >
-                    {{ range.label }}
-                  </option>
-                </select>
-              </label>
-              <div class="tbl-search-wrap">
-                <svg class="tbl-search-icon" viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  v-model="panelState(item.iri).search"
-                  class="tbl-search-input"
-                  type="search"
-                  placeholder="Search properties…"
-                />
-              </div>
-              <span class="row-count"
-                >{{ visibleProperties(item).length }} / {{ item.properties.length }}</span
-              >
-              <div class="col-picker" @click.stop>
-                <button
-                  class="col-picker-btn"
-                  type="button"
-                  :aria-expanded="openColumnPickerIri === item.iri"
-                  @click="
-                    openColumnPickerIri = openColumnPickerIri === item.iri ? undefined : item.iri
-                  "
-                >
-                  <svg viewBox="0 0 24 24">
-                    <rect x="3" y="3" width="7" height="7" rx="1" />
-                    <rect x="14" y="3" width="7" height="7" rx="1" />
-                    <rect x="3" y="14" width="7" height="7" rx="1" />
-                    <rect x="14" y="14" width="7" height="7" rx="1" />
-                  </svg>
-                  Columns
-                </button>
-                <div v-if="openColumnPickerIri === item.iri" class="col-dropdown" @click.stop>
-                  <div class="dd-section">Add / remove columns</div>
-                  <div
-                    v-for="column in columns.filter((value) => !value.always)"
-                    :key="column.id"
-                    class="dd-item"
-                  >
-                    <span class="dd-item-name" :class="{ off: !isColumnVisible(item.iri, column) }">
-                      {{ column.label }}
-                    </span>
-                    <button
-                      class="dd-toggle"
-                      :class="isColumnVisible(item.iri, column) ? 'remove' : 'add'"
-                      type="button"
-                      @click="toggleColumn(item.iri, column)"
+                    <option value="">All ranges</option>
+                    <option
+                      v-for="range in rangeOptions(item)"
+                      :key="range.iri"
+                      :value="range.iri"
+                      :title="range.iri"
                     >
-                      {{ isColumnVisible(item.iri, column) ? "−" : "+" }}
+                      {{ range.label }}
+                    </option>
+                  </select>
+                </label>
+                <div class="tbl-search-wrap">
+                  <svg class="tbl-search-icon" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    v-model="panelState(item.iri).search"
+                    class="tbl-search-input"
+                    type="search"
+                    placeholder="Search properties…"
+                  />
+                </div>
+                <span class="row-count"
+                  >{{ visibleProperties(item).length }} / {{ item.properties.length }}</span
+                >
+                <div class="col-picker" @click.stop>
+                  <button
+                    class="col-picker-btn"
+                    type="button"
+                    :aria-expanded="openColumnPickerIri === item.iri"
+                    @click="
+                      openColumnPickerIri = openColumnPickerIri === item.iri ? undefined : item.iri
+                    "
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                    Columns
+                  </button>
+                  <div v-if="openColumnPickerIri === item.iri" class="col-dropdown" @click.stop>
+                    <div class="dd-section">Add / remove columns</div>
+                    <div
+                      v-for="column in columns.filter((value) => !value.always)"
+                      :key="column.id"
+                      class="dd-item"
+                    >
+                      <span
+                        class="dd-item-name"
+                        :class="{ off: !isColumnVisible(item.iri, column) }"
+                      >
+                        {{ column.label }}
+                      </span>
+                      <button
+                        class="dd-toggle"
+                        :class="isColumnVisible(item.iri, column) ? 'remove' : 'add'"
+                        type="button"
+                        @click="toggleColumn(item.iri, column)"
+                      >
+                        {{ isColumnVisible(item.iri, column) ? "−" : "+" }}
+                      </button>
+                    </div>
+                    <div class="dd-divider"></div>
+                    <button class="dd-reset" type="button" @click="resetColumns(item.iri)">
+                      Reset to {{ state.detailMode }} defaults
+                    </button>
+                    <button
+                      class="dd-reset"
+                      type="button"
+                      @click="panelState(item.iri).columnWidths = {}"
+                    >
+                      Reset column widths
                     </button>
                   </div>
-                  <div class="dd-divider"></div>
-                  <button class="dd-reset" type="button" @click="resetColumns(item.iri)">
-                    Reset to {{ state.detailMode }} defaults
-                  </button>
-                  <button
-                    class="dd-reset"
-                    type="button"
-                    @click="panelState(item.iri).columnWidths = {}"
-                  >
-                    Reset column widths
-                  </button>
                 </div>
               </div>
-            </div>
 
-            <div class="table-wrap">
-              <div v-if="!visibleProperties(item).length" class="panel-empty">
-                No properties match — try adjusting the filters above.
-              </div>
-              <table
-                v-else
-                class="spec-table"
-                :style="{
-                  width:
-                    42 +
-                    visibleColumns(item.iri).reduce(
-                      (total, column) => total + columnWidth(item.iri, column.id),
-                      0,
-                    ) +
-                    'px',
-                }"
-              >
-                <colgroup>
-                  <col style="width: 42px" />
-                  <col
-                    v-for="column in visibleColumns(item.iri)"
-                    :key="column.id"
-                    :style="{ width: columnWidth(item.iri, column.id) + 'px' }"
-                  />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th class="expand-column"></th>
-                    <th
+              <div class="table-wrap">
+                <div v-if="!visibleProperties(item).length" class="panel-empty">
+                  No properties match — try adjusting the filters above.
+                </div>
+                <table
+                  v-else
+                  class="spec-table"
+                  :style="{
+                    width:
+                      42 +
+                      visibleColumns(item.iri).reduce(
+                        (total, column) => total + columnWidth(item.iri, column.id),
+                        0,
+                      ) +
+                      'px',
+                  }"
+                >
+                  <colgroup>
+                    <col style="width: 42px" />
+                    <col
                       v-for="column in visibleColumns(item.iri)"
                       :key="column.id"
-                      :data-column-id="column.id"
-                      :class="{ sorted: panelState(item.iri).sortColumn === column.id }"
-                      @click="sortTable(item.iri, column.id)"
-                    >
-                      {{ column.label }}
-                      <span class="sa">
-                        {{
-                          panelState(item.iri).sortColumn === column.id
-                            ? panelState(item.iri).sortDirection === 1
-                              ? "▲"
-                              : "▼"
-                            : "⇅"
-                        }}
-                      </span>
-                      <span
-                        class="column-resizer"
-                        role="separator"
-                        tabindex="0"
-                        aria-orientation="vertical"
-                        :aria-label="'Resize ' + column.label + ' column'"
-                        :aria-valuenow="columnWidth(item.iri, column.id)"
-                        :aria-valuemin="MIN_COLUMN_WIDTH"
-                        :aria-valuemax="MAX_COLUMN_WIDTH"
-                        title="Drag to resize. Use arrow keys to adjust; double-click to reset."
-                        @click.stop
-                        @dblclick.stop="delete panelState(item.iri).columnWidths[column.id]"
-                        @pointerdown.stop.prevent="startResize($event, item.iri, column.id)"
-                        @pointermove="resizeColumn"
-                        @pointerup="finishResize"
-                        @pointercancel="finishResize"
-                        @lostpointercapture="resizing = undefined"
-                        @keydown.left.stop.prevent="
-                          setColumnWidth(item.iri, column.id, columnWidth(item.iri, column.id) - 20)
-                        "
-                        @keydown.right.stop.prevent="
-                          setColumnWidth(item.iri, column.id, columnWidth(item.iri, column.id) + 20)
-                        "
-                      ></span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <template v-for="property in visibleProperties(item)" :key="property.iri">
+                      :style="{ width: columnWidth(item.iri, column.id) + 'px' }"
+                    />
+                  </colgroup>
+                  <thead>
                     <tr>
-                      <td class="expand-column">
-                        <button
-                          class="expand-btn"
-                          :class="{ expanded: isPropertyExpanded(item.iri, property.iri) }"
-                          type="button"
-                          @click="toggleProperty(item.iri, property.iri)"
-                        >
-                          <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
-                        </button>
-                      </td>
-                      <td v-for="column in visibleColumns(item.iri)" :key="column.id">
-                        <strong v-if="column.id === 'name'">{{ property.label }}</strong>
-                        <template v-else-if="column.id === 'requirement'">
-                          <span
-                            v-if="property.requirement"
-                            class="tag"
-                            :class="property.requirement"
-                            >{{ property.requirement }}</span
-                          >
-                          <span v-else>—</span>
-                        </template>
-                        <span v-else-if="column.id === 'type'" class="tag" :class="property.kind">{{
-                          property.kind
-                        }}</span>
-                        <span v-else-if="column.id === 'cardinality'" class="tag card">
-                          {{ property.cardinality ?? "—" }}
-                        </span>
-                        <span v-else-if="column.id === 'range'" class="mono-cell">
-                          <template v-for="(iri, index) in property.rangeIris" :key="iri">
-                            <span v-if="index">, </span>
-                            <ClassReference
-                              :iri="iri"
-                              :label="property.rangeLabels[index] ?? termLabel(iri)"
-                              :local="hasLocalClass(iri)"
-                              @navigate="navigateToClass"
-                            />
-                          </template>
-                          <span v-if="!property.rangeIris.length">—</span>
-                        </span>
-                        <span v-else-if="column.id === 'domain'" class="domain-value">
-                          <ClassReference
-                            v-if="property.domainIri"
-                            :iri="property.domainIri"
-                            :label="property.domainLabel ?? termLabel(property.domainIri)"
-                            :local="hasLocalClass(property.domainIri)"
-                            @navigate="navigateToClass"
-                          />
-                          <span v-else>—</span>
-                        </span>
-                        <span v-else-if="column.id === 'definition'" class="definition-cell">
-                          {{ property.definition ?? "—" }}
+                      <th class="expand-column"></th>
+                      <th
+                        v-for="column in visibleColumns(item.iri)"
+                        :key="column.id"
+                        :data-column-id="column.id"
+                        :class="{ sorted: panelState(item.iri).sortColumn === column.id }"
+                        @click="sortTable(item.iri, column.id)"
+                      >
+                        {{ column.label }}
+                        <span class="sa">
+                          {{
+                            panelState(item.iri).sortColumn === column.id
+                              ? panelState(item.iri).sortDirection === 1
+                                ? "▲"
+                                : "▼"
+                              : "⇅"
+                          }}
                         </span>
                         <span
-                          v-else-if="column.id === 'iri'"
-                          class="iri-cell"
-                          :title="property.iri"
-                        >
-                          {{ termLabel(property.iri) }}
-                        </span>
-                      </td>
+                          class="column-resizer"
+                          role="separator"
+                          tabindex="0"
+                          aria-orientation="vertical"
+                          :aria-label="'Resize ' + column.label + ' column'"
+                          :aria-valuenow="columnWidth(item.iri, column.id)"
+                          :aria-valuemin="MIN_COLUMN_WIDTH"
+                          :aria-valuemax="MAX_COLUMN_WIDTH"
+                          title="Drag to resize. Use arrow keys to adjust; double-click to reset."
+                          @click.stop
+                          @dblclick.stop="delete panelState(item.iri).columnWidths[column.id]"
+                          @pointerdown.stop.prevent="startResize($event, item.iri, column.id)"
+                          @pointermove="resizeColumn"
+                          @pointerup="finishResize"
+                          @pointercancel="finishResize"
+                          @lostpointercapture="resizing = undefined"
+                          @keydown.left.stop.prevent="
+                            setColumnWidth(
+                              item.iri,
+                              column.id,
+                              columnWidth(item.iri, column.id) - 20,
+                            )
+                          "
+                          @keydown.right.stop.prevent="
+                            setColumnWidth(
+                              item.iri,
+                              column.id,
+                              columnWidth(item.iri, column.id) + 20,
+                            )
+                          "
+                        ></span>
+                      </th>
                     </tr>
-                    <tr v-if="isPropertyExpanded(item.iri, property.iri)" class="detail-row">
-                      <td :colspan="visibleColumns(item.iri).length + 1">
-                        <div class="detail-grid">
-                          <div
-                            v-for="(reuse, index) in property.reusedValues"
-                            :key="index"
-                            class="df full"
+                  </thead>
+                  <tbody>
+                    <template v-for="property in visibleProperties(item)" :key="property.iri">
+                      <tr>
+                        <td class="expand-column">
+                          <button
+                            class="expand-btn"
+                            :class="{ expanded: isPropertyExpanded(item.iri, property.iri) }"
+                            type="button"
+                            @click="toggleProperty(item.iri, property.iri)"
                           >
-                            <label
-                              >{{
-                                reuse.field === "prefLabel"
-                                  ? "Label"
-                                  : reuse.field === "usageNote"
-                                    ? "Usage note"
-                                    : "Definition"
-                              }}
-                              source</label
+                            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
+                          </button>
+                        </td>
+                        <td v-for="column in visibleColumns(item.iri)" :key="column.id">
+                          <strong v-if="column.id === 'name'">{{ property.label }}</strong>
+                          <template v-else-if="column.id === 'requirement'">
+                            <span
+                              v-if="property.requirement"
+                              class="tag"
+                              :class="property.requirement"
+                              >{{ property.requirement }}</span
                             >
-                            <div class="dv">
-                              {{
-                                reuse.resolved
-                                  ? "Reused from"
-                                  : "Reused value unavailable in loaded data; external vocabularies are not fetched. Source:"
-                              }}
-                              <a
-                                :href="reuse.sourceIri"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                >{{ reuse.sourceIri }}</a
-                              >
-                            </div>
-                          </div>
-                          <div class="df">
-                            <label>Full IRI</label>
-                            <div class="dv mono">{{ property.iri }}</div>
-                          </div>
-                          <div class="df">
-                            <label>Value type</label>
-                            <div class="dv">{{ property.kind }}</div>
-                          </div>
-                          <div class="df">
-                            <label>Domain</label>
-                            <div class="dv domain-value">
+                            <span v-else>—</span>
+                          </template>
+                          <span
+                            v-else-if="column.id === 'type'"
+                            class="tag"
+                            :class="property.kind"
+                            >{{ property.kind }}</span
+                          >
+                          <span v-else-if="column.id === 'cardinality'" class="tag card">
+                            {{ property.cardinality ?? "—" }}
+                          </span>
+                          <span v-else-if="column.id === 'range'" class="mono-cell">
+                            <template v-for="(iri, index) in property.rangeIris" :key="iri">
+                              <span v-if="index">, </span>
                               <ClassReference
-                                v-if="property.domainIri"
-                                :iri="property.domainIri"
-                                :label="property.domainLabel ?? termLabel(property.domainIri)"
-                                :local="hasLocalClass(property.domainIri)"
+                                :iri="iri"
+                                :label="property.rangeLabels[index] ?? termLabel(iri)"
+                                :local="hasLocalClass(iri)"
                                 @navigate="navigateToClass"
                               />
-                              <span v-else>—</span>
+                            </template>
+                            <span v-if="!property.rangeIris.length">—</span>
+                          </span>
+                          <span v-else-if="column.id === 'domain'" class="domain-value">
+                            <ClassReference
+                              v-if="property.domainIri"
+                              :iri="property.domainIri"
+                              :label="property.domainLabel ?? termLabel(property.domainIri)"
+                              :local="hasLocalClass(property.domainIri)"
+                              @navigate="navigateToClass"
+                            />
+                            <span v-else>—</span>
+                          </span>
+                          <span v-else-if="column.id === 'definition'" class="definition-cell">
+                            {{ property.definition ?? "—" }}
+                          </span>
+                          <span
+                            v-else-if="column.id === 'iri'"
+                            class="iri-cell"
+                            :title="property.iri"
+                          >
+                            {{ termLabel(property.iri) }}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr v-if="isPropertyExpanded(item.iri, property.iri)" class="detail-row">
+                        <td :colspan="visibleColumns(item.iri).length + 1">
+                          <div class="detail-grid">
+                            <div
+                              v-for="(reuse, index) in property.reusedValues"
+                              :key="index"
+                              class="df full"
+                            >
+                              <label
+                                >{{
+                                  reuse.field === "prefLabel"
+                                    ? "Label"
+                                    : reuse.field === "usageNote"
+                                      ? "Usage note"
+                                      : "Definition"
+                                }}
+                                source</label
+                              >
+                              <div class="dv">
+                                {{
+                                  reuse.resolved
+                                    ? "Reused from"
+                                    : "Reused value unavailable in loaded data; external vocabularies are not fetched. Source:"
+                                }}
+                                <a
+                                  :href="reuse.sourceIri"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  >{{ reuse.sourceIri }}</a
+                                >
+                              </div>
                             </div>
-                          </div>
-                          <div class="df">
-                            <label>Range</label>
-                            <div class="dv">
-                              <template v-for="(iri, index) in property.rangeIris" :key="iri">
-                                <span v-if="index">, </span>
+                            <div class="df">
+                              <label>Full IRI</label>
+                              <div class="dv mono">{{ property.iri }}</div>
+                            </div>
+                            <div class="df">
+                              <label>Value type</label>
+                              <div class="dv">{{ property.kind }}</div>
+                            </div>
+                            <div class="df">
+                              <label>Domain</label>
+                              <div class="dv domain-value">
                                 <ClassReference
-                                  :iri="iri"
-                                  :label="property.rangeLabels[index] ?? termLabel(iri)"
-                                  :local="hasLocalClass(iri)"
+                                  v-if="property.domainIri"
+                                  :iri="property.domainIri"
+                                  :label="property.domainLabel ?? termLabel(property.domainIri)"
+                                  :local="hasLocalClass(property.domainIri)"
                                   @navigate="navigateToClass"
                                 />
-                              </template>
-                              <span v-if="!property.rangeIris.length">—</span>
+                                <span v-else>—</span>
+                              </div>
+                            </div>
+                            <div class="df">
+                              <label>Range</label>
+                              <div class="dv">
+                                <template v-for="(iri, index) in property.rangeIris" :key="iri">
+                                  <span v-if="index">, </span>
+                                  <ClassReference
+                                    :iri="iri"
+                                    :label="property.rangeLabels[index] ?? termLabel(iri)"
+                                    :local="hasLocalClass(iri)"
+                                    @navigate="navigateToClass"
+                                  />
+                                </template>
+                                <span v-if="!property.rangeIris.length">—</span>
+                              </div>
+                            </div>
+                            <div class="df">
+                              <label>Cardinality</label>
+                              <div class="dv">{{ property.cardinality ?? "—" }}</div>
+                            </div>
+                            <div class="df">
+                              <label>Requirement</label>
+                              <div class="dv">{{ property.requirement ?? "—" }}</div>
+                            </div>
+                            <div v-if="property.labelDerivedFromIri" class="df full">
+                              <label>Label source</label>
+                              <div class="dv muted">
+                                Derived from the property identifier because no published label was
+                                available in the loaded data. This is not a translated or retrieved
+                                label.
+                              </div>
+                            </div>
+                            <div v-if="property.definition" class="df full">
+                              <label>Definition</label>
+                              <div class="dv muted">{{ property.definition }}</div>
+                            </div>
+                            <div v-if="property.usageNote" class="df full">
+                              <label>Usage note</label>
+                              <div class="dv muted">{{ property.usageNote }}</div>
                             </div>
                           </div>
-                          <div class="df">
-                            <label>Cardinality</label>
-                            <div class="dv">{{ property.cardinality ?? "—" }}</div>
-                          </div>
-                          <div class="df">
-                            <label>Requirement</label>
-                            <div class="dv">{{ property.requirement ?? "—" }}</div>
-                          </div>
-                          <div v-if="property.labelDerivedFromIri" class="df full">
-                            <label>Label source</label>
-                            <div class="dv muted">
-                              Derived from the property identifier because no published label was
-                              available in the loaded data. This is not a translated or retrieved
-                              label.
-                            </div>
-                          </div>
-                          <div v-if="property.definition" class="df full">
-                            <label>Definition</label>
-                            <div class="dv muted">{{ property.definition }}</div>
-                          </div>
-                          <div v-if="property.usageNote" class="df full">
-                            <label>Usage note</label>
-                            <div class="dv muted">{{ property.usageNote }}</div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
-          </article>
-        </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
 
-        <div v-else class="code-view">
-          <div class="code-toolbar">
-            <span>Format</span>
-            <div class="code-fmt-tabs">
-              <button
-                v-for="format in ['typescript', 'json', 'turtle'] as const"
-                :key="format"
-                class="fmt-btn"
-                :class="{ active: codeFormat === format }"
-                type="button"
-                @click="codeFormat = format"
+          <div v-else class="code-view">
+            <div class="code-toolbar">
+              <span>Format</span>
+              <div class="code-fmt-tabs">
+                <button
+                  v-for="format in ['typescript', 'json', 'turtle'] as const"
+                  :key="format"
+                  class="fmt-btn"
+                  :class="{ active: codeFormat === format }"
+                  type="button"
+                  @click="codeFormat = format"
+                >
+                  {{ format === "typescript" ? "TS" : format === "json" ? "JSON" : "TTL" }}
+                </button>
+              </div>
+              <span class="code-context-count"
+                >{{ codePropertyCount }} properties from {{ selectedClasses.length }} selected
+                classes</span
               >
-                {{ format === "typescript" ? "TS" : format === "json" ? "JSON" : "TTL" }}
+              <button
+                v-if="codeFormat === 'typescript'"
+                class="fmt-btn"
+                type="button"
+                :disabled="!referencedClassCount"
+                @click="includeReferencedClasses"
+              >
+                Include referenced classes ({{ referencedClassCount }})
               </button>
             </div>
-            <span class="code-context-count"
-              >{{ codePropertyCount }} properties from {{ selectedClasses.length }} selected
-              classes</span
+            <div
+              v-if="codeFormat === 'typescript' && referencedClasses.missingIris.length"
+              class="code-reference-warning"
+              role="status"
             >
-            <button
-              v-if="codeFormat === 'typescript'"
-              class="fmt-btn"
-              type="button"
-              :disabled="!referencedClassCount"
-              @click="includeReferencedClasses"
-            >
-              Include referenced classes ({{ referencedClassCount }})
-            </button>
+              Definitions for these referenced types are not available in the loaded data. Supply
+              their declarations or imports before using the code:
+              <ul>
+                <li v-for="iri in referencedClasses.missingIris" :key="iri">{{ iri }}</li>
+              </ul>
+            </div>
+            <div v-if="omittedMandatory.length" class="code-reference-warning" role="status">
+              Mandatory properties are excluded. This output is a partial selection, not a complete
+              conforming record:
+              <ul>
+                <li v-for="property in omittedMandatory" :key="property.key">
+                  {{ property.label }}
+                </li>
+              </ul>
+            </div>
+            <pre
+              class="code-area"
+            ><button class="code-copy" type="button" @click="copyCode">{{ codeCopied ? "Copied!" : "Copy" }}</button><!-- The generated markup is escaped by highlightCode. --><!-- eslint-disable-next-line vue/no-v-html --><code v-html="highlightedCode"></code></pre>
           </div>
-          <div
-            v-if="codeFormat === 'typescript' && referencedClasses.missingIris.length"
-            class="code-reference-warning"
-            role="status"
-          >
-            Definitions for these referenced types are not available in the loaded data. Supply
-            their declarations or imports before using the code:
-            <ul>
-              <li v-for="iri in referencedClasses.missingIris" :key="iri">{{ iri }}</li>
-            </ul>
-          </div>
-          <div v-if="omittedMandatory.length" class="code-reference-warning" role="status">
-            Mandatory properties are excluded. This output is a partial selection, not a complete
-            conforming record:
-            <ul>
-              <li v-for="property in omittedMandatory" :key="property.key">{{ property.label }}</li>
-            </ul>
-          </div>
-          <pre
-            class="code-area"
-          ><button class="code-copy" type="button" @click="copyCode">{{ codeCopied ? "Copied!" : "Copy" }}</button><!-- The generated markup is escaped by highlightCode. --><!-- eslint-disable-next-line vue/no-v-html --><code v-html="highlightedCode"></code></pre>
-        </div>
-      </main>
-    </section>
+        </main>
+      </section>
+    </Transition>
   </div>
 </template>
 
@@ -1452,6 +1488,12 @@ function safeIdentifier(value?: string): string {
 }
 
 .explorer-shell {
+  --code-bg: #f8f9fc;
+  --code-text: #24283b;
+  --code-keyword: #2454b8;
+  --code-string: #246b36;
+  --code-type: #9c2853;
+  --code-comment: #626779;
   --bg: #f9f9ff;
   --surface: #fff;
   --surface2: #f1f3ff;
@@ -1479,6 +1521,12 @@ function safeIdentifier(value?: string): string {
   color: var(--text);
 }
 :global([data-theme="dark"] .explorer-shell) {
+  --code-bg: #1a1c24;
+  --code-text: #cdd6f4;
+  --code-keyword: #89b4fa;
+  --code-string: #a6e3a1;
+  --code-type: #f38ba8;
+  --code-comment: #a0a5ba;
   --bg: #293041;
   --surface: #141b2c;
   --surface2: #293041;
@@ -2446,8 +2494,8 @@ function safeIdentifier(value?: string): string {
   overflow: auto;
   margin: 0;
   padding: 20px 24px;
-  background: #1a1c24;
-  color: #cdd6f4;
+  background: var(--code-bg);
+  color: var(--code-text);
   font-family: var(--mono);
   font-size: calc(12px + var(--responsive-font-increase));
   line-height: 1.8;
@@ -2457,16 +2505,16 @@ function safeIdentifier(value?: string): string {
   font: inherit;
 }
 .code-area :deep(.ck) {
-  color: #89b4fa;
+  color: var(--code-keyword);
 }
 .code-area :deep(.cs) {
-  color: #a6e3a1;
+  color: var(--code-string);
 }
 .code-area :deep(.ct) {
-  color: #f38ba8;
+  color: var(--code-type);
 }
 .code-area :deep(.cc) {
-  color: #585b70;
+  color: var(--code-comment);
 }
 .code-copy {
   position: sticky;
@@ -2474,19 +2522,19 @@ function safeIdentifier(value?: string): string {
   float: right;
   margin: -2px -6px 4px 12px;
   padding: 4px 10px;
-  border: 1px solid #3a3c4e;
+  border: 1px solid var(--border);
   border-radius: 5px;
-  background: #252738;
-  color: #aaa;
+  background: var(--surface2);
+  color: var(--text2);
   font-family: "Jost", sans-serif;
   font-size: calc(10px + var(--responsive-font-increase));
   font-weight: 400;
   transform: none;
 }
 .code-copy:hover {
-  border-color: #666;
-  background: #252738;
-  color: #fff;
+  border-color: var(--accent);
+  background: var(--surface3);
+  color: var(--text);
   transform: none;
 }
 .load-state {

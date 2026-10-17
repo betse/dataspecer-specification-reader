@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../shared/styles/semantic-loading.css";
 import { computed, ref, shallowRef, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { routes } from "../../app/router";
@@ -7,6 +8,7 @@ import type { SemanticSpecification } from "../../data/semantic/semantic-specifi
 import { useSpecificationState } from "../../state/specification-state";
 import InteractiveSvgDiagram, { type InteractiveSvgSelection } from "./InteractiveSvgDiagram.vue";
 import { createPrimer } from "./model/primer";
+import { selectKeyConcepts } from "./model/key-concepts";
 
 function scrollToSection(id: string): void {
   globalThis.document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -61,16 +63,7 @@ const diagramTerms = computed(() => [
 const keyClasses = computed(() => {
   if (!primer.value) return [];
   const allClasses = [...primer.value.classProfiles, ...primer.value.vocabularyClasses];
-  const classByIri = new Map(allClasses.map((item) => [item.iri, item]));
-  const fromDiagram = diagramClassIris.value.flatMap((iri) => {
-    const item = classByIri.get(iri);
-    return item ? [item] : [];
-  });
-  const diagramIris = new Set(fromDiagram.map((item) => item.iri));
-  return [...fromDiagram, ...allClasses.filter((item) => !diagramIris.has(item.iri))].slice(
-    0,
-    MAX_KEY_CLASSES,
-  );
+  return selectKeyConcepts(allClasses, diagramClassIris.value, MAX_KEY_CLASSES);
 });
 const keyClassProfiles = computed(() =>
   keyClasses.value.filter((item) => "propertyProfileIris" in item),
@@ -254,7 +247,10 @@ function termLabel(iri?: string): string {
             <span v-for="badge in primer.badges" :key="badge.label" class="badge">
               {{ badge.label }}
             </span>
-            <span v-if="isSemanticLoading" class="badge">Loading semantic data…</span>
+            <span v-if="isSemanticLoading" class="badge" role="status"
+              ><span class="semantic-loading-spinner" aria-hidden="true"></span>Loading semantic
+              data…</span
+            >
             <span v-else class="badge status">Loaded</span>
           </div>
 
@@ -321,7 +317,7 @@ function termLabel(iri?: string): string {
 
       <nav class="section-nav" aria-label="Primer sections">
         <a href="#diagram" @click.prevent="scrollToSection('diagram')">Diagram</a>
-        <a href="#profiles" @click.prevent="scrollToSection('profiles')">Key profiles</a>
+        <a href="#profiles" @click.prevent="scrollToSection('profiles')">Key concepts</a>
         <a href="#requirements" @click.prevent="scrollToSection('requirements')"
           >Requirement matrix</a
         >
@@ -454,44 +450,53 @@ function termLabel(iri?: string): string {
           <span>02</span>
           <div></div>
         </div>
-        <h2>Key profiles</h2>
+        <h2>Key concepts</h2>
         <p class="section-description">
-          A primer selection of up to {{ MAX_KEY_CLASSES }} classes and profiles. Diagram classes
-          are preferred, followed by source order.
-        </p>
-        <div v-if="isSemanticLoading" class="unavailable-state">
-          <strong>Loading classes and profiles…</strong>
-          <p>The published RDF artifacts are being parsed.</p>
-        </div>
-        <div v-else-if="keyClasses.length" class="profile-grid">
-          <button
-            v-for="item in visibleKeyClasses"
-            :key="item.iri"
-            class="profile-card"
-            :class="{ selected: selectedClassIri === item.iri }"
-            type="button"
-            @click="selectClass(item.iri)"
+          A selection of up to {{ MAX_KEY_CLASSES }} concepts to help you get started. Classes
+          marked Main are prioritised, with diagram order followed by source order within each
+          group.
+          <RouterLink :to="routes.specExplorer"
+            >Explore all classes and properties in the Explorer.</RouterLink
           >
-            <span class="profile-type">
-              {{ "propertyProfileIris" in item ? "Class profile" : "Vocabulary class" }}
-            </span>
-            <strong>{{ item.label }}</strong>
-            <p>{{ item.description ?? "No description available." }}</p>
-            <span v-if="'roleLabel' in item && item.roleLabel" class="format-pill">
-              {{ item.roleLabel }}
-            </span>
-          </button>
-        </div>
-        <div v-else class="unavailable-state">
-          <strong>No classes or class profiles were found.</strong>
-          <p>The published RDF resources do not contain supported class definitions.</p>
-        </div>
+        </p>
+        <Transition name="semantic-reveal" mode="out-in">
+          <div v-if="isSemanticLoading" key="loading" class="unavailable-state">
+            <strong
+              ><span class="semantic-loading-spinner" aria-hidden="true"></span>Loading classes and
+              profiles…</strong
+            >
+            <p>The published RDF artifacts are being parsed.</p>
+          </div>
+          <div v-else-if="keyClasses.length" key="profiles" class="profile-grid">
+            <button
+              v-for="item in visibleKeyClasses"
+              :key="item.iri"
+              class="profile-card"
+              :class="{ selected: selectedClassIri === item.iri }"
+              type="button"
+              @click="selectClass(item.iri)"
+            >
+              <span class="profile-type">
+                {{ "propertyProfileIris" in item ? "Class profile" : "Vocabulary class" }}
+              </span>
+              <strong>{{ item.label }}</strong>
+              <p>{{ item.description ?? "No description available." }}</p>
+              <span v-if="'roleLabel' in item && item.roleLabel" class="format-pill">
+                {{ item.roleLabel }}
+              </span>
+            </button>
+          </div>
+          <div v-else key="empty" class="unavailable-state">
+            <strong>No classes or class profiles were found.</strong>
+            <p>The published RDF resources do not contain supported class definitions.</p>
+          </div>
+        </Transition>
         <div
           v-if="state.detailMode === 'simple' && keyClasses.length > SIMPLE_PROFILE_LIMIT"
           class="section-controls"
         >
           <button type="button" @click="showAllProfiles = !showAllProfiles">
-            {{ showAllProfiles ? "Show less" : `Show all ${keyClasses.length} profiles` }}
+            {{ showAllProfiles ? "Show less" : `Show all ${keyClasses.length} concepts` }}
           </button>
         </div>
       </section>
@@ -506,7 +511,11 @@ function termLabel(iri?: string): string {
           Up to {{ MAX_PROPERTIES_PER_CLASS }} properties per selected class, prioritised by
           requirement level.
         </p>
-        <div class="matrix-wrap">
+        <div
+          class="matrix-wrap"
+          :aria-busy="isSemanticLoading"
+          :class="{ 'semantic-content-ready': !isSemanticLoading }"
+        >
           <table>
             <thead>
               <tr>
@@ -529,7 +538,14 @@ function termLabel(iri?: string): string {
             </tbody>
             <tbody v-else>
               <tr>
-                <td colspan="4">No application-profile property requirements were found.</td>
+                <td colspan="4">
+                  <template v-if="isSemanticLoading"
+                    ><span class="semantic-loading-spinner" aria-hidden="true"></span>Loading
+                    property requirements…</template
+                  ><template v-else
+                    >No application-profile property requirements were found.</template
+                  >
+                </td>
               </tr>
             </tbody>
           </table>

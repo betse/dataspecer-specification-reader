@@ -80,6 +80,7 @@ export interface PrimerClassProfile {
   profileOfIris: string[];
   specializationOfIris: string[];
   roleLabel?: string;
+  role?: "main" | "supportive";
   propertyProfileIris: string[];
   externalDocumentationUrl?: string;
 }
@@ -276,6 +277,12 @@ function createClassProfile(
     profileOfIris: profile.profileOfIri,
     specializationOfIris: profile.specializationOfIri,
     roleLabel: classRoleLabel(profile.classRole),
+    role:
+      profile.classRole === ClassRole.main
+        ? "main"
+        : profile.classRole === ClassRole.supportive
+          ? "supportive"
+          : undefined,
     propertyProfileIris: propertyProfiles
       .filter((property) => property.domainIri === profile.iri)
       .map((property) => property.iri),
